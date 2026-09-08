@@ -81,6 +81,16 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
   assert.match(page, /readInvitationIds/);
   assert.match(page, /unreadInvitationCount/);
   assert.match(page, /合作 \{momcozyRelationship\.collaborationMonths\} 个月/);
+  assert.match(page, /const collaborationStages = \["建联", "合作", "发样", "上线视频", "完成"\]/);
+  assert.match(page, /const collaborationRecords/);
+  assert.match(page, /kind === "collaboration"/);
+  assert.match(page, /createScriptDraft/);
+  assert.match(page, /修改脚本/);
+  assert.match(page, /重新生成脚本/);
+  assert.match(page, /重新生成视频/);
+  assert.match(page, /评论区洞察复盘/);
+  assert.match(page, /下次拍摄指导建议/);
+  assert.match(page, /本周创作孵化/);
   assert.deepEqual(
     page.split("\n").filter((line) => line.includes("useEffect(() =>") && !line.includes("useEffect(() => {")),
     [],
@@ -91,7 +101,7 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
     assert.match(page, new RegExp(`${productId}: \\{`));
   }
 
-  for (const sheet of ["notifications", "invitations", "relationship", "brief", "compliance", "privacy", "videoMenu", "evidence", "profile", "publish", "contentDetail", "application"]) {
+  for (const sheet of ["notifications", "invitations", "relationship", "collaboration", "brief", "compliance", "privacy", "videoMenu", "evidence", "profile", "publish", "contentDetail", "application"]) {
     assert.match(page, new RegExp(`case "${sheet}"|kind === "${sheet}"`));
   }
 

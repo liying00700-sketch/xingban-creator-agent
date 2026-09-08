@@ -6,7 +6,7 @@ type View = "today" | "opportunities" | "studio" | "video" | "review" | "profile
 type ApplicationState = "idle" | "draft" | "submitted";
 type AgentStatus = "checking" | "ready" | "thinking" | "unconfigured" | "error";
 type ChatMessage = { role: "agent" | "user"; text: string; streaming?: boolean; error?: boolean };
-type SheetKind = "notifications" | "invitations" | "relationship" | "brief" | "compliance" | "privacy" | "videoMenu" | "evidence" | "profile" | "publish" | "contentDetail" | "application" | null;
+type SheetKind = "notifications" | "invitations" | "relationship" | "collaboration" | "brief" | "compliance" | "privacy" | "videoMenu" | "evidence" | "profile" | "publish" | "contentDetail" | "application" | null;
 type Product = {
   id: string;
   code: string;
@@ -33,6 +33,24 @@ type BrandInvitation = {
   receivedAt: string;
   deadline: string;
   fit: Product["fit"];
+};
+
+type CollaborationRecord = {
+  id: string;
+  productId: Product["id"];
+  title: string;
+  campaign: string;
+  stageIndex: number;
+  status: string;
+  updatedAt: string;
+  nextAction: string;
+  targetView: View;
+};
+
+type ScriptDraft = {
+  version: number;
+  hook: string;
+  beats: { time: string; label: string; copy: string; direction: string }[];
 };
 
 const products: Product[] = [
@@ -90,6 +108,15 @@ const brandInvitations: BrandInvitation[] = [
   { id: "invite-s12", productId: "s12", title: "S12 Pro 新品首发合作", campaign: "Momcozy · 官方主动邀请", reward: "$650–900 + 12% 佣金", receivedAt: "10 分钟前", deadline: "4 天后截止", fit: "非常适合" },
   { id: "invite-klean", productId: "klean", title: "KleanPal 夜间清洁主题", campaign: "Momcozy · 内容共创邀请", reward: "$500–750 + 10% 佣金", receivedAt: "昨天", deadline: "8 天后截止", fit: "非常适合" },
   { id: "invite-e12", productId: "e12", title: "E12 一人带娃出行计划", campaign: "Momcozy · 定向体验邀请", reward: "$350–600 + 15% 佣金", receivedAt: "3 天前", deadline: "12 天后截止", fit: "值得尝试" },
+];
+
+const collaborationStages = ["建联", "合作", "发样", "上线视频", "完成"];
+
+const collaborationRecords: CollaborationRecord[] = [
+  { id: "collab-klean-fall", productId: "klean", title: "KleanPal 夜间清洁", campaign: "秋季育儿效率计划", stageIndex: 3, status: "视频已上线，正在累计 7 天表现", updatedAt: "今天 10:20", nextAction: "查看首日数据", targetView: "review" },
+  { id: "collab-s12-launch", productId: "s12", title: "S12 Pro 新品首发", campaign: "新品种草 · TikTok", stageIndex: 2, status: "样品运输中，预计明天送达", updatedAt: "今天 09:12", nextAction: "提前准备脚本", targetView: "studio" },
+  { id: "collab-e12-travel", productId: "e12", title: "E12 一人带娃出行", campaign: "定向体验 · Reels", stageIndex: 1, status: "合作已确认，等待收货地址确认", updatedAt: "昨天 16:40", nextAction: "确认合作信息", targetView: "opportunities" },
+  { id: "collab-s12-spring", productId: "s12", title: "S12 春季真实体验", campaign: "母亲节内容计划", stageIndex: 4, status: "合作已完成并结算 $1,248", updatedAt: "8 月 18 日", nextAction: "复用高表现结构", targetView: "review" },
 ];
 
 const momcozyRelationshipInput = {
@@ -200,6 +227,40 @@ const creativeProfiles: Record<string, {
   },
 };
 
+const scriptRewrites: Record<string, string[]> = {
+  s12: [
+    "凌晨 3 点，宝宝刚睡，我以前最怕这时还要翻找一堆零件。",
+    "现在我把 S12 Pro 固定放在床边，戴好后还能空出手准备下一次喂养。",
+    "连续用了 7 个晚上，我最在意的声音、贴合和读数都能直接拍给你看。",
+    "想看真实夜间使用细节，我会把最常被问的三个问题放在评论区。",
+  ],
+  klean: [
+    "一天结束后，真正让我崩溃的，是水池里还堆着下一轮要用的奶瓶。",
+    "我现在会把配件一起放进 KleanPal Pro，让清洗和烘干在我哄睡时完成。",
+    "不是为了追求空台面，而是睡前终于不用再给自己加一轮家务。",
+    "评论区问得最多的容量和清洁步骤，我会用真实一晚的用量回答。",
+  ],
+  e12: [
+    "今天我想试一次：不等家人帮忙，也能带宝宝轻松下楼。",
+    "先固定支撑带，再把宝宝抱进去，这两个动作一个人就能完成。",
+    "我会连续拍走路、弯腰和坐下，看看受力是不是真的稳定。",
+    "如果你也不敢独自带娃出门，下一条我会回答不同月龄怎么调节。",
+  ],
+};
+
+function createScriptDraft(productId: string, angle: number, version = 1): ScriptDraft {
+  const profile = creativeProfiles[productId];
+  const useRewrite = version % 2 === 0;
+  return {
+    version,
+    hook: profile.hooks[(angle + version - 1) % profile.hooks.length],
+    beats: profile.beats.map((beat, index) => ({
+      ...beat,
+      copy: useRewrite ? scriptRewrites[productId][index] : beat.copy,
+    })),
+  };
+}
+
 function getViewFromLocation(): View {
   if (typeof window === "undefined") return "today";
   const value = new URL(window.location.href).searchParams.get("view") as View | null;
@@ -279,6 +340,8 @@ export default function Home() {
   const [maxHistoryIndex, setMaxHistoryIndex] = useState(0);
   const [creativeAngle, setCreativeAngle] = useState(0);
   const [videoReady, setVideoReady] = useState(false);
+  const [scriptDrafts, setScriptDrafts] = useState<Record<string, ScriptDraft>>({});
+  const [selectedCollaborationId, setSelectedCollaborationId] = useState(collaborationRecords[0].id);
   const [completedTasks, setCompletedTasks] = useState<number[]>([3]);
   const [readInvitationIds, setReadInvitationIds] = useState<string[]>(["invite-klean"]);
   const [milestoneAdded, setMilestoneAdded] = useState(false);
@@ -341,6 +404,11 @@ export default function Home() {
   }, []);
 
   const goTo = (next: View, product = selectedProduct) => {
+    if (product.id !== selectedProduct.id) {
+      setSelectedProduct(product);
+      setCreativeAngle(0);
+      setVideoReady(false);
+    }
     if (next === view) {
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
@@ -388,6 +456,18 @@ export default function Home() {
     setActiveSheet(null);
     const product = products.find((item) => item.id === invitation.productId);
     if (product) openOpportunity(product);
+  };
+
+  const selectCollaboration = (collaborationId: string) => {
+    setSelectedCollaborationId(collaborationId);
+    const collaboration = collaborationRecords.find((record) => record.id === collaborationId);
+    const collaborationProduct = products.find((item) => item.id === collaboration?.productId);
+    if (collaborationProduct) setSelectedProduct(collaborationProduct);
+  };
+
+  const openCollaboration = (collaborationId: string) => {
+    selectCollaboration(collaborationId);
+    setActiveSheet("collaboration");
   };
 
   const handleBack = () => {
@@ -472,6 +552,17 @@ export default function Home() {
     }
   };
 
+  const scriptDraftKey = `${selectedProduct.id}:${creativeAngle}`;
+  const scriptDraft = scriptDrafts[scriptDraftKey] ?? createScriptDraft(selectedProduct.id, creativeAngle);
+  const updateScriptDraft = (draft: ScriptDraft) => {
+    setScriptDrafts((current) => ({ ...current, [scriptDraftKey]: draft }));
+    setVideoReady(false);
+  };
+  const regenerateScript = () => {
+    updateScriptDraft(createScriptDraft(selectedProduct.id, creativeAngle, scriptDraft.version + 1));
+    setToast(`脚本 V${scriptDraft.version + 1} 已生成，可继续修改`);
+  };
+
   const header = viewTitles[view];
 
   return (
@@ -540,7 +631,7 @@ export default function Home() {
               onApply={() => applicationState === "submitted" ? setToast("这项合作已经提交申请") : setShowApply(true)}
             />
           )}
-          {view === "today" && <TodayView onOpen={openOpportunity} onGo={goTo} onOpenSheet={setActiveSheet} completedTasks={completedTasks} setCompletedTasks={setCompletedTasks} unreadInvitationCount={unreadInvitationCount} />}
+          {view === "today" && <TodayView onOpen={openOpportunity} onGo={goTo} onOpenSheet={setActiveSheet} onOpenCollaboration={openCollaboration} onAskCoach={(prompt) => { setShowAgent(true); void sendMessage(prompt); }} completedTasks={completedTasks} setCompletedTasks={setCompletedTasks} unreadInvitationCount={unreadInvitationCount} />}
           {view === "opportunities" && (
             <OpportunityView
               selected={selectedProduct}
@@ -551,8 +642,8 @@ export default function Home() {
               onOpenSheet={setActiveSheet}
             />
           )}
-          {view === "studio" && <StudioView product={selectedProduct} angle={creativeAngle} onAngleChange={setCreativeAngle} onGo={goTo} notify={setToast} onOpenSheet={setActiveSheet} />}
-          {view === "video" && <VideoView product={selectedProduct} angle={creativeAngle} ready={videoReady} setReady={setVideoReady} notify={setToast} onGo={goTo} onOpenSheet={setActiveSheet} />}
+          {view === "studio" && <StudioView product={selectedProduct} angle={creativeAngle} onAngleChange={setCreativeAngle} draft={scriptDraft} onDraftChange={updateScriptDraft} onRegenerate={regenerateScript} onGo={goTo} notify={setToast} onOpenSheet={setActiveSheet} />}
+          {view === "video" && <VideoView product={selectedProduct} angle={creativeAngle} scriptVersion={scriptDraft.version} ready={videoReady} setReady={setVideoReady} notify={setToast} onGo={goTo} onOpenSheet={setActiveSheet} />}
           {view === "review" && <ReviewView onGo={goTo} notify={setToast} onOpenSheet={setActiveSheet} />}
           {view === "profile" && <ProfileView profile={creatorProfile} notify={setToast} onOpenSheet={setActiveSheet} milestoneAdded={milestoneAdded} setMilestoneAdded={setMilestoneAdded} />}
         </section>
@@ -599,7 +690,7 @@ export default function Home() {
           }}
         />
       )}
-      {activeSheet && <ActionSheet kind={activeSheet} product={selectedProduct} profile={creatorProfile} onProfileSave={setCreatorProfile} onClose={() => setActiveSheet(null)} onGo={goTo} notify={setToast} readInvitationIds={readInvitationIds} onOpenInvitation={openBrandInvitation} />}
+      {activeSheet && <ActionSheet kind={activeSheet} product={selectedProduct} profile={creatorProfile} onProfileSave={setCreatorProfile} onClose={() => setActiveSheet(null)} onGo={goTo} notify={setToast} readInvitationIds={readInvitationIds} onOpenInvitation={openBrandInvitation} selectedCollaborationId={selectedCollaborationId} onSelectCollaboration={selectCollaboration} />}
       {toast && <div className="toast"><span>✓</span>{toast}</div>}
     </div>
   );
@@ -634,20 +725,30 @@ function JourneyBar({ view, applicationState, videoReady, onGo, onApply }: {
   );
 }
 
-function TodayView({ onOpen, onGo, onOpenSheet, completedTasks, setCompletedTasks, unreadInvitationCount }: {
+function TodayView({ onOpen, onGo, onOpenSheet, onOpenCollaboration, onAskCoach, completedTasks, setCompletedTasks, unreadInvitationCount }: {
   onOpen: (p: Product) => void;
   onGo: (v: View) => void;
   onOpenSheet: (kind: SheetKind) => void;
+  onOpenCollaboration: (collaborationId: string) => void;
+  onAskCoach: (prompt: string) => void;
   completedTasks: number[];
   setCompletedTasks: React.Dispatch<React.SetStateAction<number[]>>;
   unreadInvitationCount: number;
 }) {
+  const [activeTraining, setActiveTraining] = useState(0);
+  const [completedTraining, setCompletedTraining] = useState<number[]>([1, 2]);
   const tasks = [
     { id: 1, label: "确认 S12 Pro 合作方向", meta: "合作机会 · 今天", view: "opportunities" as View },
     { id: 2, label: "完成开头 3 秒脚本", meta: "爆款创作 · 约 8 分钟", view: "studio" as View },
     { id: 3, label: "回复 Momcozy 补充信息", meta: "品牌建联 · 截止 18:00", view: "opportunities" as View },
   ].map((task) => ({ ...task, done: completedTasks.includes(task.id) }));
+  const trainingPlans = [
+    { title: "3 秒真人开场", ability: "镜头表现", duration: "3 分钟", prompt: "请作为我的短视频创作教练，基于我擅长的夜间育儿场景，带我完成一次 3 分钟的开场口播训练。先给任务，再一次只问我一个问题。" },
+    { title: "场景冲突讲清楚", ability: "场景叙事", duration: "5 分钟", prompt: "请陪我训练如何在短视频前 8 秒讲清楚夜间育儿的具体冲突。给我一个情境，让我回答后再逐句点评。" },
+    { title: "自然说出产品价值", ability: "商业表达", duration: "4 分钟", prompt: "请作为商业内容教练，训练我不罗列参数、只用真实体验自然说出产品价值。一次给我一个练习并点评。" },
+  ];
   const toggleTask = (id: number) => setCompletedTasks((all) => all.includes(id) ? all.filter((taskId) => taskId !== id) : [...all, id]);
+  const training = trainingPlans[activeTraining];
 
   return (
     <div className="today-grid">
@@ -694,6 +795,34 @@ function TodayView({ onOpen, onGo, onOpenSheet, completedTasks, setCompletedTask
           </div>
         </section>
 
+        <section className="section-block incubation-section">
+          <div className="section-title-row">
+            <div><span className="section-eyebrow">CREATOR INCUBATION</span><h3>本周创作孵化</h3></div>
+            <span className="time-hint">已完成 {completedTraining.length}/3</span>
+          </div>
+          <div className="incubation-layout">
+            <div className="training-list">
+              {trainingPlans.map((item, index) => (
+                <button key={item.title} className={activeTraining === index ? "active" : ""} onClick={() => setActiveTraining(index)} aria-pressed={activeTraining === index}>
+                  <span>{completedTraining.includes(index) ? "✓" : `0${index + 1}`}</span>
+                  <div><strong>{item.title}</strong><small>{item.ability} · {item.duration}</small></div>
+                  <i>→</i>
+                </button>
+              ))}
+            </div>
+            <div className="coach-card">
+              <span><Mark tone="light">✦</Mark> 今日陪练</span>
+              <h4>{training.title}</h4>
+              <p>星伴会先给你一个具体情境，听完你的表达后逐句反馈；不是课程视频，而是一次真实练习。</p>
+              <div className="coach-focus"><b>本次目标</b><span>让开场更像你本人，同时在 3 秒内说清处境与冲突。</span></div>
+              <div className="coach-actions">
+                <button onClick={() => { onAskCoach(training.prompt); setCompletedTraining((all) => all.includes(activeTraining) ? all : [...all, activeTraining]); }}>开始 AI 陪练</button>
+                <button onClick={() => onGo("studio")}>带着训练写脚本 →</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="section-block pulse-section">
           <div className="section-title-row">
             <div><span className="section-eyebrow">CONTENT PULSE</span><h3>你的内容正在发生什么</h3></div>
@@ -737,13 +866,15 @@ function TodayView({ onOpen, onGo, onOpenSheet, completedTasks, setCompletedTask
           </button>
         </section>
         <section className="mini-section">
-          <div className="mini-title"><span>合作进度</span><button onClick={() => onGo("opportunities")}>全部</button></div>
-          <div className="collab-timeline">
-            <div className="timeline-item active"><span><i>✓</i></span><div><strong>Momcozy KleanPal</strong><small>脚本待确认 · 今天</small></div></div>
-            <div className="timeline-line" />
-            <div className="timeline-item"><span><i>2</i></span><div><strong>Momcozy S12 Pro</strong><small>等待你申请</small></div></div>
-            <div className="timeline-line muted" />
-            <div className="timeline-item muted"><span><i>3</i></span><div><strong>成长复盘</strong><small>发布后自动生成</small></div></div>
+          <div className="mini-title"><span>合作进度 · {collaborationRecords.length}</span><button onClick={() => onOpenCollaboration(collaborationRecords[0].id)}>全部</button></div>
+          <div className="collaboration-record-list">
+            {collaborationRecords.map((record) => (
+              <button key={record.id} onClick={() => onOpenCollaboration(record.id)} aria-label={`查看合作进度：${record.title}`}>
+                <span className={`collaboration-stage-dot ${record.stageIndex === collaborationStages.length - 1 ? "complete" : ""}`}>{record.stageIndex === collaborationStages.length - 1 ? "✓" : record.stageIndex + 1}</span>
+                <span className="collaboration-record-copy"><strong>{record.title}</strong><small>{collaborationStages[record.stageIndex]} · {record.updatedAt}</small><i><b style={{ width: `${((record.stageIndex + 1) / collaborationStages.length) * 100}%` }} /></i></span>
+                <em>›</em>
+              </button>
+            ))}
           </div>
         </section>
         <section className="mini-section score-card">
@@ -840,20 +971,25 @@ function ProductThumb({ product, large = false }: { product: Product; large?: bo
   );
 }
 
-function StudioView({ product, angle, onAngleChange, onGo, notify, onOpenSheet }: {
+function StudioView({ product, angle, draft, onDraftChange, onRegenerate, onAngleChange, onGo, notify, onOpenSheet }: {
   product: Product;
   angle: number;
+  draft: ScriptDraft;
+  onDraftChange: (draft: ScriptDraft) => void;
+  onRegenerate: () => void;
   onAngleChange: (angle: number) => void;
   onGo: (v: View) => void;
   notify: (m: string) => void;
   onOpenSheet: (kind: SheetKind) => void;
 }) {
-  const [hookVersion, setHookVersion] = useState(0);
+  const [editing, setEditing] = useState(false);
   const profile = creativeProfiles[product.id];
   const refreshAngles = () => {
     onAngleChange((angle + 1) % profile.angles.length);
-    setHookVersion(0);
     notify("已根据最新趋势推荐下一个内容切角");
+  };
+  const updateBeat = (index: number, field: "copy" | "direction", value: string) => {
+    onDraftChange({ ...draft, beats: draft.beats.map((beat, beatIndex) => beatIndex === index ? { ...beat, [field]: value } : beat) });
   };
   return (
     <div className="studio-layout" data-testid="studio-view">
@@ -867,29 +1003,34 @@ function StudioView({ product, angle, onAngleChange, onGo, notify, onOpenSheet }
         </div>
         <div className="angle-section">
           <div className="section-title-row"><div><span className="section-eyebrow">CREATIVE ANGLES</span><h3>选择一个内容切角</h3></div><button className="text-btn" onClick={refreshAngles}>推荐下一个 ↻</button></div>
-          <div className="angle-list">{profile.angles.map((item, i) => <button key={item.title} onClick={() => { onAngleChange(i); setHookVersion(0); }} className={angle === i ? "active" : ""} aria-pressed={angle === i}><span>0{i + 1}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><em>{item.reason}</em></button>)}</div>
+          <div className="angle-list">{profile.angles.map((item, i) => <button key={item.title} onClick={() => onAngleChange(i)} className={angle === i ? "active" : ""} aria-pressed={angle === i}><span>0{i + 1}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><em>{item.reason}</em></button>)}</div>
         </div>
       </section>
       <section className="script-panel">
-        <div className="script-top"><div><span>{product.id === "e12" ? "42" : product.id === "klean" ? "45" : "35"} 秒短视频脚本</span><h3>{profile.angles[angle].title}</h3></div><span className="saved-state">● 已自动保存</span></div>
-        <div className="hook-box"><div><span>HOOK · 0–3s</span><button onClick={() => setHookVersion((v) => (v + 1) % profile.hooks.length)}>换一个 ↻</button></div><blockquote>“{profile.hooks[hookVersion]}”</blockquote><small>镜头：真人先出镜，再自然带到使用场景与产品。</small></div>
+        <div className="script-top"><div><span>{product.id === "e12" ? "42" : product.id === "klean" ? "45" : "35"} 秒短视频脚本 · V{draft.version}</span><h3>{profile.angles[angle].title}</h3></div><span className="saved-state">● 已自动保存</span></div>
+        <div className={`hook-box ${editing ? "editing" : ""}`}><div><span>HOOK · 0–3s</span><button onClick={() => { const current = profile.hooks.indexOf(draft.hook); onDraftChange({ ...draft, hook: profile.hooks[(current + 1) % profile.hooks.length] }); }}>换一个 ↻</button></div>{editing ? <textarea aria-label="修改脚本开头" value={draft.hook} onChange={(event) => onDraftChange({ ...draft, hook: event.target.value })} /> : <blockquote>“{draft.hook}”</blockquote>}<small>镜头：真人先出镜，再自然带到使用场景与产品。</small></div>
         <div className="script-timeline">
-          {profile.beats.map((beat) => <ScriptBeat key={beat.time} {...beat} />)}
+          {draft.beats.map((beat, index) => <ScriptBeat key={beat.time} beat={beat} editing={editing} onChange={(field, value) => updateBeat(index, field, value)} />)}
         </div>
         <div className="compliance-check"><span>✓</span><div><strong>品牌要求检查通过</strong><small>已包含产品全名、#ad 提醒；无未经证实的功效表述。</small></div><button onClick={() => onOpenSheet("compliance")}>查看 6 项</button></div>
-        <div className="script-actions"><button className="secondary-btn" onClick={() => notify("脚本已保存到创作项目")}>保存脚本</button><button className="primary-btn" onClick={() => onGo("video")}>用这个脚本生成视频 →</button></div>
+        <div className="script-edit-actions">
+          <button className={editing ? "active" : ""} onClick={() => { setEditing(!editing); if (editing) notify("脚本修改已自动保存"); }}>{editing ? "完成修改" : "修改脚本"}</button>
+          <button onClick={() => { onRegenerate(); setEditing(false); }}>重新生成脚本 ↻</button>
+        </div>
+        <div className="script-actions"><button className="secondary-btn" onClick={() => notify("脚本已保存到创作项目")}>保存脚本</button><button className="primary-btn" onClick={() => onGo("video")} disabled={!draft.hook.trim() || draft.beats.some((beat) => !beat.copy.trim())}>用这个脚本生成视频 →</button></div>
       </section>
     </div>
   );
 }
 
-function ScriptBeat({ time, label, copy, direction }: { time: string; label: string; copy: string; direction: string }) {
-  return <div className="script-beat"><span className="beat-time">{time}</span><span className="beat-dot" /><div><span>{label}</span><p>{copy}</p><small>{direction}</small></div></div>;
+function ScriptBeat({ beat, editing, onChange }: { beat: ScriptDraft["beats"][number]; editing: boolean; onChange: (field: "copy" | "direction", value: string) => void }) {
+  return <div className={`script-beat ${editing ? "editing" : ""}`}><span className="beat-time">{beat.time}</span><span className="beat-dot" /><div><span>{beat.label}</span>{editing ? <textarea aria-label={`修改${beat.label}脚本`} value={beat.copy} onChange={(event) => onChange("copy", event.target.value)} /> : <p>{beat.copy}</p>}{editing ? <input aria-label={`修改${beat.label}镜头指导`} value={beat.direction} onChange={(event) => onChange("direction", event.target.value)} /> : <small>{beat.direction}</small>}</div></div>;
 }
 
-function VideoView({ product, angle, ready, setReady, notify, onGo, onOpenSheet }: {
+function VideoView({ product, angle, scriptVersion, ready, setReady, notify, onGo, onOpenSheet }: {
   product: Product;
   angle: number;
+  scriptVersion: number;
   ready: boolean;
   setReady: (ready: boolean) => void;
   notify: (m: string) => void;
@@ -901,6 +1042,7 @@ function VideoView({ product, angle, ready, setReady, notify, onGo, onOpenSheet 
   const [subtitle, setSubtitle] = useState("中文 + 重点高亮");
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [videoVersion, setVideoVersion] = useState(1);
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
   const profile = creativeProfiles[product.id];
@@ -917,7 +1059,12 @@ function VideoView({ product, angle, ready, setReady, notify, onGo, onOpenSheet 
     }), 180);
     return () => window.clearInterval(timer);
   }, [generating, setReady]);
-  const start = () => { setReady(false); setProgress(0); setGenerating(true); };
+  const start = () => {
+    if (ready) setVideoVersion((version) => version + 1);
+    setReady(false);
+    setProgress(0);
+    setGenerating(true);
+  };
   const addFiles = (files: FileList | null) => {
     if (!files?.length) return;
     const names = Array.from(files).map((file) => file.name);
@@ -927,7 +1074,7 @@ function VideoView({ product, angle, ready, setReady, notify, onGo, onOpenSheet 
   return (
     <div className="video-layout" data-testid="video-view">
       <section className="video-settings">
-        <div className="project-status"><div className="status-icon">✦</div><div><span>来自爆款创作 · {product.name}</span><strong>{profile.angles[angle].title}</strong><small>{product.id === "e12" ? "42" : product.id === "klean" ? "45" : "35"} 秒 · 5 个分镜 · 合规检查已通过</small></div><button onClick={() => onGo("studio")}>返回脚本</button></div>
+        <div className="project-status"><div className="status-icon">✦</div><div><span>来自爆款创作 · {product.name}</span><strong>{profile.angles[angle].title}</strong><small>脚本 V{scriptVersion} · {product.id === "e12" ? "42" : product.id === "klean" ? "45" : "35"} 秒 · 合规检查已通过</small></div><button onClick={() => onGo("studio")}>返回修改脚本</button></div>
         <div className="setting-group">
           <div className="setting-title"><span>01</span><div><strong>选择你的素材</strong><small>AI 会优先保留真人出镜片段</small></div></div>
           <input ref={fileInput} className="visually-hidden" type="file" accept="video/*,image/*" multiple onChange={(event) => addFiles(event.target.files)} />
@@ -937,22 +1084,31 @@ function VideoView({ product, angle, ready, setReady, notify, onGo, onOpenSheet 
         <div className="rights-box"><span>盾</span><div><strong>你的素材，你的决定</strong><small>本次素材仅用于生成当前项目，不会自动授权给品牌或用于模型训练。</small></div><button onClick={() => onOpenSheet("privacy")}>隐私设置</button></div>
       </section>
       <aside className="preview-panel">
-        <div className="preview-head"><div><span>AI 成片预览</span><small>{ratio} · 1080P · {subtitle}</small></div><button onClick={() => onOpenSheet("videoMenu")} aria-label="打开视频项目菜单">···</button></div>
+        <div className="preview-head"><div><span>AI 成片预览 · 视频 V{videoVersion}</span><small>脚本 V{scriptVersion} · {ratio} · 1080P · {subtitle}</small></div><button onClick={() => onOpenSheet("videoMenu")} aria-label="打开视频项目菜单">···</button></div>
         <div className={`phone-preview ${ready ? "ready" : ""}`}>
           <div className="phone-scene"><span className="scene-moon">◐</span><div className="scene-person"><i /><b /></div><div className="scene-product">{product.code}</div><div className="caption-line"><span>{profile.caption[0]}</span><strong>{profile.caption[1]}</strong></div><div className="video-progress"><i /></div></div>
           {generating && <div className="generate-overlay"><div className="spinner" /><strong>正在生成你的成片</strong><span>{progress}% · 正在匹配镜头与节奏</span><div><i style={{ width: `${progress}%` }} /></div></div>}
         </div>
         <div className="preview-summary"><div><span>预计成片</span><b>00:35</b></div><div><span>素材使用</span><b>7 / 11</b></div><div><span>预计生成</span><b>约 18 秒</b></div></div>
-        {!ready ? <button className="primary-btn full-btn" disabled={generating} onClick={start}>{generating ? `正在生成 ${progress}%` : "生成第一版成片 ✦"}</button> : <div className="ready-actions"><button className="secondary-btn" onClick={start}>再生成一版</button><button className="primary-btn" onClick={() => onOpenSheet("publish")}>进入发布前检查 →</button></div>}
+        {!ready ? <button className="primary-btn full-btn" disabled={generating} onClick={start}>{generating ? `正在生成 ${progress}%` : "生成第一版成片 ✦"}</button> : <div className="ready-actions"><button className="secondary-btn" onClick={start}>重新生成视频 ↻</button><button className="primary-btn" onClick={() => onOpenSheet("publish")}>进入发布前检查 →</button></div>}
         <p className="generation-cost">本次生成预计消耗 1 个视频额度 · 本月剩余 8 个</p>
       </aside>
     </div>
   );
 }
 
+const commentInsights = {
+  "购买意向": { count: 126, change: "+49", summary: "粉丝不再只说“好用”，而是在主动确认购买入口和具体型号。", quote: "“求链接！这个是 S12 还是 S12 Pro？”", signal: "型号 + 购买入口是最强转化信号", action: "下一条在 18 秒明确展示型号，并把购买说明置顶。" },
+  "使用疑问": { count: 84, change: "+31", summary: "声音、清洁和夜间操作是被反复追问的三个真实使用问题。", quote: "“晚上用真的不会吵醒宝宝吗？”", signal: "粉丝需要可听见、可看见的使用证据", action: "保留 2 秒环境原声，再用近景展示拆洗步骤。" },
+  "情绪共鸣": { count: 213, change: "+76", summary: "“终于有人懂”类评论集中出现在真人先出镜、先讲困境的视频。", quote: "“看到凌晨三点这里，我真的眼泪下来了。”", signal: "具体时间和处境比泛化育儿情绪更有效", action: "开场继续用具体时刻，但语气放轻，不要制造焦虑。" },
+  "购买阻碍": { count: 39, change: "-8", summary: "主要顾虑集中在价格是否值得，以及产品是否适合自己的使用频率。", quote: "“偶尔用一次的话，有必要买吗？”", signal: "缺少按使用频率区分的购买建议", action: "补充“适合谁 / 不适合谁”，降低不必要的购买压力。" },
+};
+
 function ReviewView({ onGo, notify, onOpenSheet }: { onGo: (v: View) => void; notify: (m: string) => void; onOpenSheet: (kind: SheetKind) => void }) {
   const [metric, setMetric] = useState("播放趋势");
   const [range, setRange] = useState("近 30 天");
+  const [commentTheme, setCommentTheme] = useState<keyof typeof commentInsights>("购买意向");
+  const selectedCommentInsight = commentInsights[commentTheme];
   const chartValues = metric === "播放趋势" ? [18, 32, 26, 52, 48, 70, 82, 76, 92, 86] : metric === "互动趋势" ? [24, 28, 42, 38, 58, 64, 55, 72, 68, 80] : [12, 18, 22, 20, 32, 40, 52, 48, 62, 72];
   const points = chartValues.map((v, i) => `${i * 11.1},${100 - v}`).join(" ");
   const changeRange = () => setRange((current) => current === "近 30 天" ? "近 7 天" : current === "近 7 天" ? "近 90 天" : "近 30 天");
@@ -980,6 +1136,27 @@ function ReviewView({ onGo, notify, onOpenSheet }: { onGo: (v: View) => void; no
           <div className="css-chart"><div className="grid-lines"><i /><i /><i /><i /></div><svg viewBox="0 0 100 105" preserveAspectRatio="none" aria-label={`${metric}折线图`}><defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fb6d4c" stopOpacity=".3"/><stop offset="100%" stopColor="#fb6d4c" stopOpacity="0"/></linearGradient></defs><polygon points={`0,105 ${points} 100,105`} fill="url(#chartFill)"/><polyline points={points} fill="none" stroke="#f46342" strokeWidth="2" vectorEffect="non-scaling-stroke" /></svg><div className="x-axis"><span>8/08</span><span>8/15</span><span>8/22</span><span>8/29</span><span>9/01</span></div></div>
         </section>
         <section className="diagnosis-card"><div className="diagnosis-head"><Mark>✦</Mark><div><span>AI 复盘结论</span><strong>这周真正有效的 3 件事</strong></div></div><ol><li><span>01</span><div><strong>真人先出镜，再露产品</strong><p>前 3 秒留存平均高出 19%，信任建立更快。</p></div></li><li><span>02</span><div><strong>“深夜”是你的强场景</strong><p>收藏率和购买意向同时提升，不只是流量波动。</p></div></li><li><span>03</span><div><strong>明确说出不便，比罗列参数有效</strong><p>带具体处境的视频，评论转化信号高 2.1 倍。</p></div></li></ol><button className="primary-btn" onClick={() => onGo("studio")}>带着结论创作下一条 →</button></section>
+      </div>
+      <div className="review-insight-grid">
+        <section className="comment-insight-card">
+          <div className="section-title-row"><div><span className="section-eyebrow">COMMENT INTELLIGENCE</span><h3>评论区洞察复盘</h3></div><span className="time-hint">已分析 1,846 条</span></div>
+          <div className="comment-theme-tabs">
+            {(Object.keys(commentInsights) as (keyof typeof commentInsights)[]).map((theme) => <button key={theme} className={commentTheme === theme ? "active" : ""} onClick={() => setCommentTheme(theme)} aria-pressed={commentTheme === theme}><span>{theme}</span><b>{commentInsights[theme].count}</b><small>{commentInsights[theme].change}</small></button>)}
+          </div>
+          <div className="comment-finding"><span>核心发现</span><h4>{selectedCommentInsight.summary}</h4><blockquote>{selectedCommentInsight.quote}</blockquote><div><b>行为信号</b><p>{selectedCommentInsight.signal}</p></div></div>
+        </section>
+        <section className="shooting-guide-card">
+          <div className="shooting-guide-head"><Mark tone="light">✦</Mark><div><span>NEXT SHOOT GUIDE</span><h3>下次拍摄指导建议</h3></div></div>
+          <p className="shooting-priority"><b>优先解决：</b>{selectedCommentInsight.action}</p>
+          <ol>
+            <li><span>0–3s</span><div><strong>真人先出镜</strong><small>直接说“凌晨 3 点，宝宝刚睡”。</small></div></li>
+            <li><span>3–12s</span><div><strong>拍真实的不方便</strong><small>保留环境音，先让处境成立。</small></div></li>
+            <li><span>12–25s</span><div><strong>给可验证证据</strong><small>近景展示型号、读数和连续动作。</small></div></li>
+            <li><span>25–35s</span><div><strong>回答最高频问题</strong><small>不催单，把完整说明放在置顶评论。</small></div></li>
+          </ol>
+          <div className="shooting-checklist"><span>必拍：真人开场</span><span>保留：2 秒原声</span><span>避免：参数堆叠</span></div>
+          <button onClick={() => onGo("studio")}>用此洞察生成下一版脚本 →</button>
+        </section>
       </div>
       <section className="content-ranking"><div className="section-title-row"><div><span className="section-eyebrow">CONTENT BREAKDOWN</span><h3>内容表现拆解</h3></div><button className="text-btn" onClick={exportReport}>导出周报 ↗</button></div><div className="ranking-table"><div className="table-head"><span>内容</span><span>播放 / 完播</span><span>互动</span><span>转化信号</span><span>Agent 判断</span></div><RankRow rank="01" title="凌晨喂奶，我最怕的不是困" meta="TikTok · 8月30日" theme="night" views="186K / 52%" engagement="12.8K" signal="68" verdict="值得复用" onOpen={() => onOpenSheet("contentDetail")} /><RankRow rank="02" title="新手妈妈别急着囤这些" meta="Reels · 8月28日" theme="warm" views="142K / 46%" engagement="9.4K" signal="37" verdict="开头很强" onOpen={() => onOpenSheet("contentDetail")} /><RankRow rank="03" title="我的夜间喂养收纳台" meta="TikTok · 8月26日" theme="soft" views="94K / 38%" engagement="6.1K" signal="21" verdict="优化转场" onOpen={() => onOpenSheet("contentDetail")} /></div></section>
     </div>
@@ -1065,10 +1242,12 @@ function ApplyModal({ product, state, onClose, onDraft, onSubmit, onEvidence }: 
   );
 }
 
-function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, notify, readInvitationIds, onOpenInvitation }: { kind: Exclude<SheetKind, null>; product: Product; profile: { name: string; bio: string }; onProfileSave: (profile: { name: string; bio: string }) => void; onClose: () => void; onGo: (view: View) => void; notify: (message: string) => void; readInvitationIds: string[]; onOpenInvitation: (invitation: BrandInvitation) => void }) {
+function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, notify, readInvitationIds, onOpenInvitation, selectedCollaborationId, onSelectCollaboration }: { kind: Exclude<SheetKind, null>; product: Product; profile: { name: string; bio: string }; onProfileSave: (profile: { name: string; bio: string }) => void; onClose: () => void; onGo: (view: View, product?: Product) => void; notify: (message: string) => void; readInvitationIds: string[]; onOpenInvitation: (invitation: BrandInvitation) => void; selectedCollaborationId: string; onSelectCollaboration: (collaborationId: string) => void }) {
   const [profileName, setProfileName] = useState(profile.name);
   const [profileBio, setProfileBio] = useState(profile.bio);
   const [privacy, setPrivacy] = useState({ train: false, brand: false, current: true });
+  const selectedCollaboration = collaborationRecords.find((record) => record.id === selectedCollaborationId) ?? collaborationRecords[0];
+  const selectedCollaborationProduct = products.find((item) => item.id === selectedCollaboration.productId) ?? products[0];
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", closeOnEscape);
@@ -1079,6 +1258,7 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, not
     notifications: ["通知中心", "3 条需要你关注的消息"],
     invitations: ["Momcozy 主动邀请", `${brandInvitations.filter((invitation) => !readInvitationIds.includes(invitation.id)).length} 条未读 · ${brandInvitations.length} 条进行中`],
     relationship: ["Momcozy 亲密度", `合作始于 ${momcozyRelationship.startedAt}`],
+    collaboration: ["合作进度", `${collaborationRecords.length} 个 Momcozy 合作项目`],
     brief: ["完整合作 Brief", product.name],
     compliance: ["发布合规检查", "6 项要求全部通过"],
     privacy: ["素材与隐私", "你始终拥有最终控制权"],
@@ -1090,7 +1270,7 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, not
     application: ["申请进度", product.name],
   };
   const [title, subtitle] = titles[kind];
-  const go = (view: View) => { onClose(); onGo(view); };
+  const go = (view: View, nextProduct?: Product) => { onClose(); onGo(view, nextProduct); };
 
   return (
     <div className="sheet-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -1128,6 +1308,27 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, not
             </div>
             <div className="relationship-next"><span><i style={{ width: `${momcozyRelationship.score}%` }} /></span><div><b>再提升 {momcozyRelationship.nextLevelScore - momcozyRelationship.score} 分，进入「品牌共创者」</b><small>完成当前邀请并保持准时交付，是最直接的提升路径。</small></div></div>
             <button className="primary-btn full-btn" onClick={() => { onClose(); onGo("opportunities"); }}>查看 Momcozy 合作机会 →</button>
+          </div>}
+
+          {kind === "collaboration" && <div className="collaboration-detail">
+            <div className="collaboration-switcher" aria-label="选择合作项目">
+              {collaborationRecords.map((record) => <button key={record.id} className={record.id === selectedCollaboration.id ? "active" : ""} onClick={() => onSelectCollaboration(record.id)} aria-pressed={record.id === selectedCollaboration.id}><span>{record.title}</span><small>{collaborationStages[record.stageIndex]} · {record.updatedAt}</small></button>)}
+            </div>
+            <div className="collaboration-summary">
+              <span className="collaboration-product-code">{selectedCollaborationProduct.code}</span>
+              <div><small>MOMCOZY · {selectedCollaboration.campaign}</small><h3>{selectedCollaboration.title}</h3><p>{selectedCollaboration.status}</p></div>
+            </div>
+            <div className="collaboration-progress-track"><i style={{ width: `${((selectedCollaboration.stageIndex + 1) / collaborationStages.length) * 100}%` }} /></div>
+            <div className="collaboration-stage-list">
+              {collaborationStages.map((stage, index) => {
+                const done = index < selectedCollaboration.stageIndex || selectedCollaboration.stageIndex === collaborationStages.length - 1;
+                const active = index === selectedCollaboration.stageIndex && !done;
+                const descriptions = ["品牌与红人已建立联系", "合作方向、报价与档期已确认", "样品寄送与收货状态", "视频发布并开始累计表现", "验收、结算并沉淀合作资产"];
+                return <div key={stage} className={`collaboration-stage ${done ? "done" : ""} ${active ? "active" : ""}`}><i>{done ? "✓" : index + 1}</i><div><strong>{stage}</strong><small>{descriptions[index]}</small></div>{active && <em>当前</em>}</div>;
+              })}
+            </div>
+            <div className="collaboration-next-action"><span>建议下一步</span><strong>{selectedCollaboration.nextAction}</strong><small>星伴会带着当前合作信息进入下一步，不需要重复选择产品。</small></div>
+            <button className="primary-btn full-btn" onClick={() => go(selectedCollaboration.targetView, selectedCollaborationProduct)}>{selectedCollaboration.nextAction} →</button>
           </div>}
 
           {kind === "brief" && <div className="sheet-section-list">
@@ -1185,9 +1386,7 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, not
 
           {kind === "application" && <div className="application-timeline">
             <div className="application-status"><span>申请已提交</span><strong>Momcozy 正在审核</strong><small>预计 2–3 个工作日内回复</small></div>
-            <div className="application-step done"><i>✓</i><div><strong>申请提交</strong><small>今天 09:42</small></div></div>
-            <div className="application-step active"><i>2</i><div><strong>品牌审核</strong><small>正在确认档期与内容方向</small></div></div>
-            <div className="application-step"><i>3</i><div><strong>建立合作</strong><small>通过后自动生成 Brief 与待办</small></div></div>
+            {collaborationStages.map((stage, index) => <div key={stage} className={`application-step ${index === 0 ? "done" : index === 1 ? "active" : ""}`}><i>{index === 0 ? "✓" : index + 1}</i><div><strong>{stage}</strong><small>{index === 0 ? "今天 09:42 · 已与品牌建立联系" : index === 1 ? "正在确认报价、档期与内容方向" : index === 2 ? "合作确认后同步物流状态" : index === 3 ? "发布后自动接入内容数据" : "验收结算并沉淀合作资产"}</small></div></div>)}
             <button className="secondary-btn full-btn" onClick={() => go("studio")}>等待期间先准备内容 →</button>
           </div>}
         </div>
