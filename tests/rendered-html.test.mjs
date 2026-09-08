@@ -49,3 +49,33 @@ test("ships product metadata and a bespoke social card", async () => {
   assert.ok(og.size > 100_000);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
 });
+
+test("keeps navigation, product work, and secondary actions wired", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /window\.history\.pushState/);
+  assert.match(page, /window\.history\.back\(\)/);
+  assert.match(page, /window\.history\.forward\(\)/);
+  assert.match(page, /addEventListener\("popstate"/);
+  assert.match(page, /applicationStates\[selectedProduct\.id\]/);
+  assert.match(page, /creativeProfiles\[selectedProduct\.id\]/);
+  assert.match(page, /setVideoReady\(false\)/);
+  assert.match(page, /type="file"/);
+  assert.match(page, /URL\.createObjectURL/);
+
+  for (const productId of ["s12", "klean", "e12"]) {
+    assert.match(page, new RegExp(`${productId}: \\{`));
+  }
+
+  for (const sheet of ["notifications", "brief", "compliance", "privacy", "videoMenu", "evidence", "profile", "publish", "contentDetail", "application"]) {
+    assert.match(page, new RegExp(`case "${sheet}"|kind === "${sheet}"`));
+  }
+
+  const buttonTags = page.match(/<button\b[\s\S]*?>/g) ?? [];
+  assert.ok(buttonTags.length > 30);
+  assert.deepEqual(
+    buttonTags.filter((tag) => !/onClick=/.test(tag)),
+    [],
+    "every visible button should have an interaction handler",
+  );
+});
