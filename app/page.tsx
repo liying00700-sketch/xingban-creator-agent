@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 
 type View = "today" | "opportunities" | "studio" | "video" | "review" | "profile";
 type ApplicationState = "idle" | "draft" | "submitted";
+type AgentStatus = "checking" | "ready" | "thinking" | "unconfigured" | "error";
+type ChatMessage = { role: "agent" | "user"; text: string; streaming?: boolean; error?: boolean };
 type SheetKind = "notifications" | "brief" | "compliance" | "privacy" | "videoMenu" | "evidence" | "profile" | "publish" | "contentDetail" | "application" | null;
 type Product = {
   id: string;
@@ -182,6 +184,47 @@ function AppIcon({ symbol, accent = false }: { symbol: string; accent?: boolean 
   return <span className={`app-icon ${accent ? "app-icon-accent" : ""}`}>{symbol}</span>;
 }
 
+async function readAgentStream(response: Response, onText: (text: string) => void): Promise<string> {
+  if (!response.body) throw new Error("没有收到模型回复，请重试。");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result = "";
+
+  const consumeEvent = (block: string) => {
+    const data = block
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+    if (!data || data === "[DONE]") return;
+    const event = JSON.parse(data) as { type?: string; delta?: string; response?: { error?: { message?: string } }; error?: { message?: string } };
+    if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+      result += event.delta;
+      onText(result);
+    }
+    if (event.type === "response.failed" || event.type === "error") {
+      throw new Error(event.response?.error?.message || event.error?.message || "模型没有完成回复，请重试。");
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    buffer = buffer.replace(/\r\n/g, "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      consumeEvent(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf("\n\n");
+    }
+    if (done) break;
+  }
+  if (buffer.trim()) consumeEvent(buffer);
+  if (!result.trim()) throw new Error("模型返回了空内容，请重试。");
+  return result;
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("today");
   const [selectedProduct, setSelectedProduct] = useState<Product>(products[0]);
@@ -198,8 +241,10 @@ export default function Home() {
   const [completedTasks, setCompletedTasks] = useState<number[]>([3]);
   const [milestoneAdded, setMilestoneAdded] = useState(false);
   const [creatorProfile, setCreatorProfile] = useState({ name: "Mia Chen", bio: "真实记录新手妈妈的育儿生活，让好用的东西减少一点手忙脚乱。" });
-  const [messages, setMessages] = useState([
-    { role: "agent", text: "我已经看过你最近 30 天的内容和新合作。今天建议先确认 S12 Pro 的合作方向，再完成开头 3 秒脚本。" },
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>("checking");
+  const agentAbort = useRef<AbortController | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: "agent", text: "你好，我是星伴。你可以直接问我选品、品牌合作、短视频脚本或数据复盘，我会结合你当前正在处理的任务回答。" },
   ]);
 
   useEffect(() => {
@@ -236,6 +281,22 @@ export default function Home() {
     const timer = window.setTimeout(() => setToast(""), 2600);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/agent", { headers: { Accept: "application/json" } })
+      .then((response) => response.json())
+      .then((data: { configured?: boolean }) => {
+        if (active) setAgentStatus(data.configured ? "ready" : "unconfigured");
+      })
+      .catch(() => {
+        if (active) setAgentStatus("error");
+      });
+    return () => {
+      active = false;
+      agentAbort.current?.abort();
+    };
+  }, []);
 
   const goTo = (next: View, product = selectedProduct) => {
     if (next === view) {
@@ -288,17 +349,68 @@ export default function Home() {
     if (historyIndex < maxHistoryIndex) window.history.forward();
   };
 
-  const sendMessage = (preset?: string) => {
+  const sendMessage = async (preset?: string) => {
     const value = (preset || chatInput).trim();
-    if (!value) return;
-    const profile = creativeProfiles[selectedProduct.id];
-    const reply = value.includes("脚本")
-      ? `可以。建议用“${profile.hooks[0]}”开场，先给真实处境，再自然带出 ${selectedProduct.name}。完整分镜已经可以在爆款创作中继续调整。`
-      : value.includes("适合") || value.includes("机会")
-        ? `${selectedProduct.name} 当前最适合你。依据是受众阶段、近期内容信号和你的真实育儿表达，报酬与授权期也在你的偏好范围内。`
-        : "收到。我会优先结合你的账号数据、合作规则和个人表达来给建议；任何申请、报价和发布动作都会先交给你确认。";
-    setMessages((current) => [...current, { role: "user", text: value }, { role: "agent", text: reply }]);
+    if (!value || agentStatus === "thinking") return;
+    const userMessage: ChatMessage = { role: "user", text: value };
+    const requestMessages = [...messages, userMessage]
+      .filter((message) => !message.error && !message.streaming)
+      .slice(-12)
+      .map((message) => ({ role: message.role === "agent" ? "assistant" : "user", content: message.text }));
+
     setChatInput("");
+    setAgentStatus("thinking");
+    setMessages((current) => [...current, userMessage, { role: "agent", text: "", streaming: true }]);
+
+    const controller = new AbortController();
+    agentAbort.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 60_000);
+
+    try {
+      const response = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify({
+          messages: requestMessages,
+          context: {
+            view,
+            product: {
+              id: selectedProduct.id,
+              code: selectedProduct.code,
+              name: selectedProduct.name,
+              category: selectedProduct.category,
+              reward: `${selectedProduct.fee} + ${selectedProduct.commission}`,
+              tags: selectedProduct.tags,
+            },
+            applicationState,
+            creativeAngle,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        throw new Error(payload?.error?.message || "AI 经纪人暂时无法回复，请稍后重试。");
+      }
+
+      const reply = await readAgentStream(response, (text) => {
+        setMessages((current) => current.map((message, index) => index === current.length - 1 ? { role: "agent", text, streaming: true } : message));
+      });
+      setMessages((current) => current.map((message, index) => index === current.length - 1 ? { role: "agent", text: reply } : message));
+      setAgentStatus("ready");
+    } catch (error) {
+      const message = error instanceof DOMException && error.name === "AbortError"
+        ? "这次响应超时了，请重试。"
+        : error instanceof Error
+          ? error.message
+          : "AI 经纪人暂时无法回复，请稍后重试。";
+      setMessages((current) => current.map((item, index) => index === current.length - 1 ? { role: "agent", text: message, error: true } : item));
+      setAgentStatus(message.includes("尚未配置") ? "unconfigured" : "error");
+    } finally {
+      window.clearTimeout(timeout);
+      agentAbort.current = null;
+    }
   };
 
   const header = viewTitles[view];
@@ -395,6 +507,8 @@ export default function Home() {
           onGo={goTo}
           view={view}
           applicationState={applicationState}
+          product={selectedProduct}
+          status={agentStatus}
         />
       )}
 
@@ -817,11 +931,13 @@ function Capability({ label, value }: { label: string; value: number }) {
   return <div><span>{label}</span><i><b style={{ width: `${value}%` }} /></i><strong>{value}</strong></div>;
 }
 
-function AgentPanel({ messages, chatInput, setChatInput, sendMessage, close, onGo, view, applicationState }: {
-  messages: { role: string; text: string }[]; chatInput: string; setChatInput: (v: string) => void; sendMessage: (p?: string) => void; close: () => void; onGo: (v: View) => void; view: View; applicationState: ApplicationState;
+function AgentPanel({ messages, chatInput, setChatInput, sendMessage, close, onGo, view, applicationState, product, status }: {
+  messages: ChatMessage[]; chatInput: string; setChatInput: (v: string) => void; sendMessage: (p?: string) => void | Promise<void>; close: () => void; onGo: (v: View) => void; view: View; applicationState: ApplicationState; product: Product; status: AgentStatus;
 }) {
   const messagesEnd = useRef<HTMLDivElement>(null);
   useEffect(() => messagesEnd.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }), [messages]);
+  const isThinking = status === "thinking";
+  const statusText = status === "thinking" ? "正在思考" : status === "checking" ? "正在连接" : status === "unconfigured" ? "等待模型配置" : status === "error" ? "连接异常" : "AI 经纪人在线";
   const nextAction = view === "studio"
     ? { title: "脚本确认后，生成第一版视频", copy: "素材和表达仍由你控制，AI 只负责剪辑与适配。", label: "去生成视频", target: "video" as View }
     : view === "video"
@@ -831,14 +947,14 @@ function AgentPanel({ messages, chatInput, setChatInput, sendMessage, close, onG
         : { title: "先确认合作，再开始创作", copy: "这样生成的脚本会自动带上品牌要求，减少返工。", label: "去确认合作", target: "opportunities" as View };
   return (
     <aside className="agent-panel">
-      <div className="agent-head"><div><span className="agent-orb">✦</span><span><strong>星伴</strong><small><i /> AI 经纪人在线</small></span></div><button onClick={close} aria-label="关闭 AI 经纪人">×</button></div>
+      <div className="agent-head"><div><span className={`agent-orb ${isThinking ? "thinking" : ""}`}>✦</span><span><strong>星伴</strong><small className={`status-${status}`}><i /> {statusText}</small></span></div><button onClick={close} aria-label="关闭 AI 经纪人">×</button></div>
       <div className="agent-body">
-        <div className="agent-context"><span>当前页面</span><div><b>{viewTitles[view].title}</b><small>建议会结合你正在进行的任务</small></div></div>
-        <div className="message-list">{messages.map((message, i) => <div className={`message ${message.role}`} key={`${message.role}-${i}`}>{message.role === "agent" && <span>✦</span>}<p>{message.text}</p></div>)}<div ref={messagesEnd} /></div>
-        <div className="quick-prompts"><button onClick={() => sendMessage("为什么 S12 Pro 适合我？")}>为什么这个机会适合我？</button><button onClick={() => sendMessage("帮我优化视频脚本")}>帮我优化今天的视频脚本</button></div>
+        <div className="agent-context"><span>当前页面</span><div><b>{viewTitles[view].title} · {product.code}</b><small>模型会结合当前商品、申请状态和最近对话</small></div></div>
+        <div className="message-list" aria-live="polite">{messages.map((message, i) => <div className={`message ${message.role} ${message.error ? "error" : ""}`} key={`${message.role}-${i}`}>{message.role === "agent" && <span>✦</span>}<p>{message.streaming && !message.text ? <span className="typing-dots"><i /><i /><i /></span> : message.text}</p></div>)}<div ref={messagesEnd} /></div>
+        <div className="quick-prompts"><button disabled={isThinking} onClick={() => sendMessage(`为什么 ${product.name} 适合我？`)}>为什么这个机会适合我？</button><button disabled={isThinking} onClick={() => sendMessage(`帮我优化 ${product.name} 的视频脚本`)}>帮我优化今天的视频脚本</button></div>
         <div className="agent-action-card"><span>建议下一步</span><strong>{nextAction.title}</strong><p>{nextAction.copy}</p><button onClick={() => onGo(nextAction.target)}>{nextAction.label} <span>→</span></button></div>
       </div>
-      <div className="agent-input"><div><textarea aria-label="给 AI 经纪人发消息" rows={1} placeholder="问选品、合作或创作…" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} /><button onClick={() => sendMessage()} aria-label="发送消息">↑</button></div><small>AI 可能出错，重要合作信息请确认。</small></div>
+      <div className="agent-input"><div><textarea aria-label="给 AI 经纪人发消息" rows={1} maxLength={2000} disabled={isThinking} placeholder={isThinking ? "星伴正在回复…" : "问选品、合作或创作…"} value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} /><button disabled={isThinking || !chatInput.trim()} onClick={() => sendMessage()} aria-label={isThinking ? "正在生成回复" : "发送消息"}>{isThinking ? "···" : "↑"}</button></div><small>{status === "unconfigured" ? "模型尚未配置，添加密钥后即可开始对话。" : "重要合作信息与对外动作仍由你最终确认。"}</small></div>
     </aside>
   );
 }

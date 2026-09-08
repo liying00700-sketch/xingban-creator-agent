@@ -3,15 +3,27 @@ import { access, readFile, stat } from "node:fs/promises";
 import test from "node:test";
 
 async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
+  const worker = await loadWorker();
 
   return worker.fetch(
     new Request("http://localhost/", { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
-    { waitUntil() {}, passThroughOnException() {} },
+    workerEnv(),
+    executionContext(),
   );
+}
+
+async function loadWorker() {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
+  return (await import(workerUrl.href)).default;
+}
+
+function workerEnv(overrides = {}) {
+  return { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) }, ...overrides };
+}
+
+function executionContext() {
+  return { waitUntil() {}, passThroughOnException() {} };
 }
 
 test("server-renders the Creator Agent product shell", async () => {
@@ -58,7 +70,7 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
   assert.match(page, /window\.history\.forward\(\)/);
   assert.match(page, /addEventListener\("popstate"/);
   assert.match(page, /applicationStates\[selectedProduct\.id\]/);
-  assert.match(page, /creativeProfiles\[selectedProduct\.id\]/);
+  assert.match(page, /creativeProfiles\[product\.id\]/);
   assert.match(page, /setVideoReady\(false\)/);
   assert.match(page, /type="file"/);
   assert.match(page, /URL\.createObjectURL/);
@@ -78,4 +90,75 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
     [],
     "every visible button should have an interaction handler",
   );
+});
+
+test("reports an honest configuration state when the model secret is missing", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  const worker = await loadWorker();
+  try {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/agent", { headers: { accept: "application/json" } }),
+      workerEnv(),
+      executionContext(),
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { configured: false, model: null });
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("proxies a grounded, private streaming conversation to the Responses API", async () => {
+  const worker = await loadWorker();
+  const originalFetch = globalThis.fetch;
+  const previousKey = process.env.OPENAI_API_KEY;
+  const previousModel = process.env.OPENAI_MODEL;
+  process.env.OPENAI_API_KEY = "test-secret";
+  process.env.OPENAI_MODEL = "gpt-6-astra";
+  let upstreamRequest;
+  globalThis.fetch = async (input, init) => {
+    if (String(input) !== "https://api.openai.com/v1/responses") return originalFetch(input, init);
+    upstreamRequest = { input, init, body: JSON.parse(String(init?.body)) };
+    return new Response(
+      'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"建议优先申请"}\n\n' +
+      'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":" S12 Pro。"}\n\n' +
+      'event: response.completed\ndata: {"type":"response.completed"}\n\n',
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    );
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/agent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "我应该先申请哪个合作？" }],
+          context: { view: "opportunities", product: { id: "s12", code: "S12", name: "S12 Pro 穿戴式吸奶器" } },
+        }),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /^text\/event-stream/);
+    assert.match(await response.text(), /建议优先申请.*S12 Pro/s);
+    assert.equal(upstreamRequest?.init?.headers?.Authorization, "Bearer test-secret");
+    assert.equal(upstreamRequest?.body?.model, "gpt-6-astra");
+    assert.equal(upstreamRequest?.body?.store, false);
+    assert.equal(upstreamRequest?.body?.stream, true);
+    assert.equal(upstreamRequest?.body?.reasoning?.effort, "low");
+    assert.match(upstreamRequest?.body?.instructions ?? "", /不得声称已经替创作者提交申请/);
+    assert.match(JSON.stringify(upstreamRequest?.body?.input), /opportunityCatalog/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.OPENAI_MODEL;
+    else process.env.OPENAI_MODEL = previousModel;
+  }
 });
