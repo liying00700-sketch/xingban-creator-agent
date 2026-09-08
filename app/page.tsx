@@ -6,7 +6,7 @@ type View = "today" | "opportunities" | "studio" | "video" | "review" | "profile
 type ApplicationState = "idle" | "draft" | "submitted";
 type AgentStatus = "checking" | "ready" | "thinking" | "unconfigured" | "error";
 type ChatMessage = { role: "agent" | "user"; text: string; streaming?: boolean; error?: boolean };
-type SheetKind = "notifications" | "brief" | "compliance" | "privacy" | "videoMenu" | "evidence" | "profile" | "publish" | "contentDetail" | "application" | null;
+type SheetKind = "notifications" | "invitations" | "relationship" | "brief" | "compliance" | "privacy" | "videoMenu" | "evidence" | "profile" | "publish" | "contentDetail" | "application" | null;
 type Product = {
   id: string;
   code: string;
@@ -22,6 +22,17 @@ type Product = {
   reasons: string[];
   tags: string[];
   palette: string;
+};
+
+type BrandInvitation = {
+  id: string;
+  productId: Product["id"];
+  title: string;
+  campaign: string;
+  reward: string;
+  receivedAt: string;
+  deadline: string;
+  fit: Product["fit"];
 };
 
 const products: Product[] = [
@@ -74,6 +85,36 @@ const products: Product[] = [
     palette: "peach",
   },
 ];
+
+const brandInvitations: BrandInvitation[] = [
+  { id: "invite-s12", productId: "s12", title: "S12 Pro 新品首发合作", campaign: "Momcozy · 官方主动邀请", reward: "$650–900 + 12% 佣金", receivedAt: "10 分钟前", deadline: "4 天后截止", fit: "非常适合" },
+  { id: "invite-klean", productId: "klean", title: "KleanPal 夜间清洁主题", campaign: "Momcozy · 内容共创邀请", reward: "$500–750 + 10% 佣金", receivedAt: "昨天", deadline: "8 天后截止", fit: "非常适合" },
+  { id: "invite-e12", productId: "e12", title: "E12 一人带娃出行计划", campaign: "Momcozy · 定向体验邀请", reward: "$350–600 + 15% 佣金", receivedAt: "3 天前", deadline: "12 天后截止", fit: "值得尝试" },
+];
+
+const momcozyRelationshipInput = {
+  collaborationMonths: 18,
+  completedCollaborations: 4,
+  repeatCollaborations: 2,
+  onTimeRate: 96,
+};
+
+function calculateIntimacy(input: typeof momcozyRelationshipInput) {
+  const timeScore = Math.min(60, input.collaborationMonths * 3);
+  const collaborationBonus = Math.min(12, input.completedCollaborations * 3);
+  const repeatBonus = Math.min(14, input.repeatCollaborations * 7);
+  const trustBonus = input.onTimeRate >= 95 ? 8 : input.onTimeRate >= 85 ? 5 : 2;
+  const score = Math.min(100, timeScore + collaborationBonus + repeatBonus + trustBonus);
+  const level = score >= 95 ? "品牌共创者" : score >= 80 ? "默契伙伴" : score >= 60 ? "稳定合作" : "正在熟悉";
+  return { score, level, timeScore, collaborationBonus, repeatBonus, trustBonus };
+}
+
+const momcozyRelationship = {
+  ...momcozyRelationshipInput,
+  ...calculateIntimacy(momcozyRelationshipInput),
+  startedAt: "2025 年 3 月",
+  nextLevelScore: 95,
+};
 
 const navItems: { id: View; label: string; icon: string; badge?: string }[] = [
   { id: "today", label: "今日", icon: "⌂" },
@@ -239,6 +280,7 @@ export default function Home() {
   const [creativeAngle, setCreativeAngle] = useState(0);
   const [videoReady, setVideoReady] = useState(false);
   const [completedTasks, setCompletedTasks] = useState<number[]>([3]);
+  const [readInvitationIds, setReadInvitationIds] = useState<string[]>(["invite-klean"]);
   const [milestoneAdded, setMilestoneAdded] = useState(false);
   const [creatorProfile, setCreatorProfile] = useState({ name: "Mia Chen", bio: "真实记录新手妈妈的育儿生活，让好用的东西减少一点手忙脚乱。" });
   const [agentStatus, setAgentStatus] = useState<AgentStatus>("checking");
@@ -339,6 +381,14 @@ export default function Home() {
   };
 
   const applicationState = applicationStates[selectedProduct.id] ?? "idle";
+  const unreadInvitationCount = brandInvitations.filter((invitation) => !readInvitationIds.includes(invitation.id)).length;
+
+  const openBrandInvitation = (invitation: BrandInvitation) => {
+    setReadInvitationIds((current) => current.includes(invitation.id) ? current : [...current, invitation.id]);
+    setActiveSheet(null);
+    const product = products.find((item) => item.id === invitation.productId);
+    if (product) openOpportunity(product);
+  };
 
   const handleBack = () => {
     if (historyIndex > 0) window.history.back();
@@ -384,6 +434,15 @@ export default function Home() {
             },
             applicationState,
             creativeAngle,
+            brandSignals: {
+              activeInvitations: brandInvitations.length,
+              unreadInvitations: unreadInvitationCount,
+              momcozyRelationship: {
+                collaborationMonths: momcozyRelationship.collaborationMonths,
+                intimacyScore: momcozyRelationship.score,
+                intimacyLevel: momcozyRelationship.level,
+              },
+            },
           },
         }),
         signal: controller.signal,
@@ -461,7 +520,9 @@ export default function Home() {
             <p>{header.subtitle}</p>
           </div>
           <div className="top-actions">
-            <button className="round-btn notification-btn" aria-label="查看通知" onClick={() => setActiveSheet("notifications")}>●<span /></button>
+            <button className="round-btn notification-btn" aria-label={`查看 Momcozy 主动邀请，${unreadInvitationCount} 条未读`} onClick={() => setActiveSheet("invitations")}>
+              <span className="notification-count" aria-hidden="true">{unreadInvitationCount}</span>
+            </button>
             <button className={`agent-toggle ${showAgent ? "active" : ""}`} onClick={() => setShowAgent(!showAgent)}>
               <Mark tone={showAgent ? "dark" : "light"}>✦</Mark>
               AI 经纪人
@@ -479,7 +540,7 @@ export default function Home() {
               onApply={() => applicationState === "submitted" ? setToast("这项合作已经提交申请") : setShowApply(true)}
             />
           )}
-          {view === "today" && <TodayView onOpen={openOpportunity} onGo={goTo} completedTasks={completedTasks} setCompletedTasks={setCompletedTasks} />}
+          {view === "today" && <TodayView onOpen={openOpportunity} onGo={goTo} onOpenSheet={setActiveSheet} completedTasks={completedTasks} setCompletedTasks={setCompletedTasks} unreadInvitationCount={unreadInvitationCount} />}
           {view === "opportunities" && (
             <OpportunityView
               selected={selectedProduct}
@@ -538,7 +599,7 @@ export default function Home() {
           }}
         />
       )}
-      {activeSheet && <ActionSheet kind={activeSheet} product={selectedProduct} profile={creatorProfile} onProfileSave={setCreatorProfile} onClose={() => setActiveSheet(null)} onGo={goTo} notify={setToast} />}
+      {activeSheet && <ActionSheet kind={activeSheet} product={selectedProduct} profile={creatorProfile} onProfileSave={setCreatorProfile} onClose={() => setActiveSheet(null)} onGo={goTo} notify={setToast} readInvitationIds={readInvitationIds} onOpenInvitation={openBrandInvitation} />}
       {toast && <div className="toast"><span>✓</span>{toast}</div>}
     </div>
   );
@@ -573,11 +634,13 @@ function JourneyBar({ view, applicationState, videoReady, onGo, onApply }: {
   );
 }
 
-function TodayView({ onOpen, onGo, completedTasks, setCompletedTasks }: {
+function TodayView({ onOpen, onGo, onOpenSheet, completedTasks, setCompletedTasks, unreadInvitationCount }: {
   onOpen: (p: Product) => void;
   onGo: (v: View) => void;
+  onOpenSheet: (kind: SheetKind) => void;
   completedTasks: number[];
   setCompletedTasks: React.Dispatch<React.SetStateAction<number[]>>;
+  unreadInvitationCount: number;
 }) {
   const tasks = [
     { id: 1, label: "确认 S12 Pro 合作方向", meta: "合作机会 · 今天", view: "opportunities" as View },
@@ -659,6 +722,20 @@ function TodayView({ onOpen, onGo, completedTasks, setCompletedTasks }: {
       </div>
 
       <aside className="today-rail">
+        <button className="brand-invite-card" onClick={() => onOpenSheet("invitations")} aria-label={`查看 ${brandInvitations.length} 条 Momcozy 主动邀请，其中 ${unreadInvitationCount} 条未读`}>
+          <span className="mini-eyebrow">MOMCOZY INVITES</span>
+          <span className="invite-count-row"><strong>{brandInvitations.length}</strong><i>{unreadInvitationCount} 条未读</i></span>
+          <b>品牌主动邀请</b>
+          <small>查看合作方向、报价与截止时间</small>
+          <em>查看全部 →</em>
+        </button>
+        <section className="mini-section relationship-card">
+          <div className="mini-title"><span>Momcozy 亲密度</span><em>{momcozyRelationship.level}</em></div>
+          <button className="intimacy-summary" onClick={() => onOpenSheet("relationship")} aria-label="查看 Momcozy 亲密度计算方式">
+            <span className="intimacy-ring" style={{ "--intimacy": `${momcozyRelationship.score}%` } as React.CSSProperties}><strong>{momcozyRelationship.score}</strong><small>/ 100</small></span>
+            <span className="intimacy-copy"><b>合作 {momcozyRelationship.collaborationMonths} 个月</b><small>时长贡献 {momcozyRelationship.timeScore} 分</small><em>查看计算方式 →</em></span>
+          </button>
+        </section>
         <section className="mini-section">
           <div className="mini-title"><span>合作进度</span><button onClick={() => onGo("opportunities")}>全部</button></div>
           <div className="collab-timeline">
@@ -921,7 +998,7 @@ function ProfileView({ profile, notify, onOpenSheet, milestoneAdded, setMileston
   return (
     <div className="profile-layout">
       <section className="profile-card-main"><div className="profile-hero"><span className="avatar avatar-large">{profile.name.slice(0, 1).toUpperCase()}</span><div><span className="verified-line">已验证创作者 · TikTok / Instagram</span><h2>{profile.name}</h2><p>{profile.bio}</p><div className="profile-tags"><i>母婴生活</i><i>真实体验</i><i>北美华人</i><i>生活流短视频</i></div></div><button className="secondary-btn" onClick={() => onOpenSheet("profile")}>编辑资料</button></div><div className="asset-metrics"><div><span>全平台粉丝</span><strong>286K</strong><small>近 30 天 +8.4%</small></div><div><span>商业内容均播</span><strong>118K</strong><small>基于 16 条合作</small></div><div><span>准时交付率</span><strong>96%</strong><small>连续 8 次按时</small></div><div><span>品牌复投率</span><strong>62%</strong><small>高于同阶段均值</small></div></div></section>
-      <div className="profile-columns"><section className="capability-card"><div className="section-title-row"><div><span className="section-eyebrow">CAPABILITY MAP</span><h3>创作者能力图谱</h3></div><span className="level-pill">成长期 · L3</span></div><div className="bar-list"><Capability label="场景叙事" value={88} /><Capability label="受众信任" value={84} /><Capability label="商业转化" value={76} /><Capability label="镜头表现" value={72} /><Capability label="稳定交付" value={91} /></div></section><section className="brand-history"><div className="section-title-row"><div><span className="section-eyebrow">BRAND RELATIONSHIP</span><h3>品牌合作资产</h3></div><span>12 次合作</span></div><div className="history-brand"><span>M</span><div><strong>Momcozy</strong><small>合作 4 次 · 复投 2 次</small></div><em>优先合作池</em></div><div className="history-brand"><span>H</span><div><strong>Hatch</strong><small>合作 2 次 · 复投 1 次</small></div><em>稳定合作</em></div><div className="history-brand"><span>B</span><div><strong>Babylist</strong><small>合作 1 次 · 已完成</small></div><em>关系良好</em></div></section></div>
+      <div className="profile-columns"><section className="capability-card"><div className="section-title-row"><div><span className="section-eyebrow">CAPABILITY MAP</span><h3>创作者能力图谱</h3></div><span className="level-pill">成长期 · L3</span></div><div className="bar-list"><Capability label="场景叙事" value={88} /><Capability label="受众信任" value={84} /><Capability label="商业转化" value={76} /><Capability label="镜头表现" value={72} /><Capability label="稳定交付" value={91} /></div></section><section className="brand-history"><div className="section-title-row"><div><span className="section-eyebrow">BRAND RELATIONSHIP</span><h3>品牌合作资产</h3></div><span>12 次合作</span></div><button className="history-brand featured" onClick={() => onOpenSheet("relationship")}><span>M</span><div><strong>Momcozy</strong><small>合作 {momcozyRelationship.collaborationMonths} 个月 · 亲密度 {momcozyRelationship.score}</small></div><em>{momcozyRelationship.level}</em></button><div className="history-brand"><span>H</span><div><strong>Hatch</strong><small>合作 2 次 · 复投 1 次</small></div><em>稳定合作</em></div><div className="history-brand"><span>B</span><div><strong>Babylist</strong><small>合作 1 次 · 已完成</small></div><em>关系良好</em></div></section></div>
       <section className="next-level-card"><div><Mark>✦</Mark><span className="section-eyebrow">NEXT MILESTONE</span><h3>距离「品牌共创者」还差一步</h3><p>完成一次从选品到复盘的完整合作闭环，并保持内容完播率 ≥ 40%。</p></div><div className="milestone-progress"><span><i style={{ width: "76%" }} /></span><div><b>76%</b><button className={milestoneAdded ? "added" : ""} onClick={() => { setMilestoneAdded(!milestoneAdded); notify(milestoneAdded ? "已从本周成长清单移除" : "已加入本周成长清单"); }}>{milestoneAdded ? "已加入本周目标 ✓" : "加入本周目标 →"}</button></div></div></section>
     </div>
   );
@@ -988,7 +1065,7 @@ function ApplyModal({ product, state, onClose, onDraft, onSubmit, onEvidence }: 
   );
 }
 
-function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, notify }: { kind: Exclude<SheetKind, null>; product: Product; profile: { name: string; bio: string }; onProfileSave: (profile: { name: string; bio: string }) => void; onClose: () => void; onGo: (view: View) => void; notify: (message: string) => void }) {
+function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, notify, readInvitationIds, onOpenInvitation }: { kind: Exclude<SheetKind, null>; product: Product; profile: { name: string; bio: string }; onProfileSave: (profile: { name: string; bio: string }) => void; onClose: () => void; onGo: (view: View) => void; notify: (message: string) => void; readInvitationIds: string[]; onOpenInvitation: (invitation: BrandInvitation) => void }) {
   const [profileName, setProfileName] = useState(profile.name);
   const [profileBio, setProfileBio] = useState(profile.bio);
   const [privacy, setPrivacy] = useState({ train: false, brand: false, current: true });
@@ -1000,6 +1077,8 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, not
 
   const titles: Record<Exclude<SheetKind, null>, [string, string]> = {
     notifications: ["通知中心", "3 条需要你关注的消息"],
+    invitations: ["Momcozy 主动邀请", `${brandInvitations.filter((invitation) => !readInvitationIds.includes(invitation.id)).length} 条未读 · ${brandInvitations.length} 条进行中`],
+    relationship: ["Momcozy 亲密度", `合作始于 ${momcozyRelationship.startedAt}`],
     brief: ["完整合作 Brief", product.name],
     compliance: ["发布合规检查", "6 项要求全部通过"],
     privacy: ["素材与隐私", "你始终拥有最终控制权"],
@@ -1022,6 +1101,33 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, not
             <button onClick={() => go("opportunities")}><span className="notice-icon coral">!</span><div><strong>Momcozy 邀请你申请新品合作</strong><small>申请窗口还剩 4 天 · 10 分钟前</small></div><b>→</b></button>
             <button onClick={() => go("studio")}><span className="notice-icon lime">✓</span><div><strong>KleanPal 脚本已通过基础检查</strong><small>还有 1 项品牌备注待查看 · 1 小时前</small></div><b>→</b></button>
             <button onClick={() => go("review")}><span className="notice-icon mint">↗</span><div><strong>你的本周内容复盘已生成</strong><small>发现 3 个可复用的增长信号 · 昨天</small></div><b>→</b></button>
+          </div>}
+
+          {kind === "invitations" && <div className="invitation-panel">
+            <div className="invitation-summary"><span><strong>{brandInvitations.length}</strong><small>进行中的主动邀请</small></span><p>这些机会由 Momcozy 主动发起。打开邀请只会标记为已读，不会自动接受合作。</p></div>
+            <div className="invitation-list">
+              {brandInvitations.map((invitation) => {
+                const unread = !readInvitationIds.includes(invitation.id);
+                return <button className={unread ? "unread" : ""} key={invitation.id} onClick={() => onOpenInvitation(invitation)}>
+                  <span className="invite-brand-mark">M</span>
+                  <span className="invite-message"><i>{invitation.campaign}{unread ? " · NEW" : ""}</i><strong>{invitation.title}</strong><small>{invitation.reward}</small><em>{invitation.receivedAt} · {invitation.deadline}</em></span>
+                  <b>{invitation.fit}<i>→</i></b>
+                </button>;
+              })}
+            </div>
+          </div>}
+
+          {kind === "relationship" && <div className="relationship-detail">
+            <div className="relationship-score-hero"><span className="relationship-monogram">M</span><div><small>MOMCOZY RELATIONSHIP</small><strong>{momcozyRelationship.score}<i>/100</i></strong><em>{momcozyRelationship.level}</em></div></div>
+            <p className="relationship-explainer">亲密度以合作时长为基础，再叠加真实合作、品牌复投和准时交付。分数用于解释关系进展，不代表品牌承诺或合作资格。</p>
+            <div className="relationship-factors">
+              <div><span>合作时长</span><strong>{momcozyRelationship.collaborationMonths} 个月</strong><em>+{momcozyRelationship.timeScore}</em></div>
+              <div><span>完成合作</span><strong>{momcozyRelationship.completedCollaborations} 次</strong><em>+{momcozyRelationship.collaborationBonus}</em></div>
+              <div><span>品牌复投</span><strong>{momcozyRelationship.repeatCollaborations} 次</strong><em>+{momcozyRelationship.repeatBonus}</em></div>
+              <div><span>准时交付</span><strong>{momcozyRelationship.onTimeRate}%</strong><em>+{momcozyRelationship.trustBonus}</em></div>
+            </div>
+            <div className="relationship-next"><span><i style={{ width: `${momcozyRelationship.score}%` }} /></span><div><b>再提升 {momcozyRelationship.nextLevelScore - momcozyRelationship.score} 分，进入「品牌共创者」</b><small>完成当前邀请并保持准时交付，是最直接的提升路径。</small></div></div>
+            <button className="primary-btn full-btn" onClick={() => { onClose(); onGo("opportunities"); }}>查看 Momcozy 合作机会 →</button>
           </div>}
 
           {kind === "brief" && <div className="sheet-section-list">

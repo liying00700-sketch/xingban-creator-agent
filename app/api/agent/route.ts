@@ -22,6 +22,15 @@ type AgentContext = {
   };
   applicationState?: string;
   creativeAngle?: number;
+  brandSignals?: {
+    activeInvitations?: number;
+    unreadInvitations?: number;
+    momcozyRelationship?: {
+      collaborationMonths?: number;
+      intimacyScore?: number;
+      intimacyLevel?: string;
+    };
+  };
 };
 
 const DEFAULT_MODEL = "deepseek-v4-flash";
@@ -129,6 +138,19 @@ function cleanContext(value: unknown): AgentContext {
     product,
     applicationState: String(source.applicationState ?? "").slice(0, 40),
     creativeAngle: Number.isInteger(source.creativeAngle) ? source.creativeAngle : 0,
+    brandSignals: source.brandSignals && typeof source.brandSignals === "object"
+      ? {
+          activeInvitations: Number.isInteger(source.brandSignals.activeInvitations) ? source.brandSignals.activeInvitations : 0,
+          unreadInvitations: Number.isInteger(source.brandSignals.unreadInvitations) ? source.brandSignals.unreadInvitations : 0,
+          momcozyRelationship: source.brandSignals.momcozyRelationship && typeof source.brandSignals.momcozyRelationship === "object"
+            ? {
+                collaborationMonths: Number.isInteger(source.brandSignals.momcozyRelationship.collaborationMonths) ? source.brandSignals.momcozyRelationship.collaborationMonths : 0,
+                intimacyScore: Number.isInteger(source.brandSignals.momcozyRelationship.intimacyScore) ? source.brandSignals.momcozyRelationship.intimacyScore : 0,
+                intimacyLevel: String(source.brandSignals.momcozyRelationship.intimacyLevel ?? "").slice(0, 40),
+              }
+            : undefined,
+        }
+      : undefined,
   };
 }
 

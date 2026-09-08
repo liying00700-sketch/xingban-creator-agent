@@ -40,6 +40,8 @@ test("server-renders the Creator Agent product shell", async () => {
   assert.match(html, /AI 视频/);
   assert.match(html, /数据复盘/);
   assert.match(html, /Momcozy 新品合作/i);
+  assert.match(html, /品牌主动邀请/);
+  assert.match(html, /Momcozy 亲密度/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -74,6 +76,11 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
   assert.match(page, /setVideoReady\(false\)/);
   assert.match(page, /type="file"/);
   assert.match(page, /URL\.createObjectURL/);
+  assert.match(page, /const brandInvitations/);
+  assert.match(page, /calculateIntimacy/);
+  assert.match(page, /readInvitationIds/);
+  assert.match(page, /unreadInvitationCount/);
+  assert.match(page, /合作 \{momcozyRelationship\.collaborationMonths\} 个月/);
   assert.deepEqual(
     page.split("\n").filter((line) => line.includes("useEffect(() =>") && !line.includes("useEffect(() => {")),
     [],
@@ -84,7 +91,7 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
     assert.match(page, new RegExp(`${productId}: \\{`));
   }
 
-  for (const sheet of ["notifications", "brief", "compliance", "privacy", "videoMenu", "evidence", "profile", "publish", "contentDetail", "application"]) {
+  for (const sheet of ["notifications", "invitations", "relationship", "brief", "compliance", "privacy", "videoMenu", "evidence", "profile", "publish", "contentDetail", "application"]) {
     assert.match(page, new RegExp(`case "${sheet}"|kind === "${sheet}"`));
   }
 
@@ -142,7 +149,15 @@ test("proxies a grounded, stateless streaming conversation to the DeepSeek Respo
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           messages: [{ role: "user", content: "我应该先申请哪个合作？" }],
-          context: { view: "opportunities", product: { id: "s12", code: "S12", name: "S12 Pro 穿戴式吸奶器" } },
+          context: {
+            view: "opportunities",
+            product: { id: "s12", code: "S12", name: "S12 Pro 穿戴式吸奶器" },
+            brandSignals: {
+              activeInvitations: 3,
+              unreadInvitations: 2,
+              momcozyRelationship: { collaborationMonths: 18, intimacyScore: 88, intimacyLevel: "默契伙伴" },
+            },
+          },
         }),
       }),
       workerEnv(),
@@ -159,6 +174,9 @@ test("proxies a grounded, stateless streaming conversation to the DeepSeek Respo
     assert.equal(upstreamRequest?.body?.store, undefined);
     assert.match(upstreamRequest?.body?.instructions ?? "", /不得声称已经替创作者提交申请/);
     assert.match(JSON.stringify(upstreamRequest?.body?.input), /opportunityCatalog/);
+    const contextPayload = JSON.parse(upstreamRequest.body.input[0].content.split("\n").slice(1).join("\n"));
+    assert.equal(contextPayload.creatorContext.brandSignals.unreadInvitations, 2);
+    assert.equal(contextPayload.creatorContext.brandSignals.momcozyRelationship.intimacyScore, 88);
   } finally {
     globalThis.fetch = originalFetch;
     if (previousKey === undefined) delete process.env.DEEPSEEK_API_KEY;
