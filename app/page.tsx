@@ -935,7 +935,9 @@ function AgentPanel({ messages, chatInput, setChatInput, sendMessage, close, onG
   messages: ChatMessage[]; chatInput: string; setChatInput: (v: string) => void; sendMessage: (p?: string) => void | Promise<void>; close: () => void; onGo: (v: View) => void; view: View; applicationState: ApplicationState; product: Product; status: AgentStatus;
 }) {
   const messagesEnd = useRef<HTMLDivElement>(null);
-  useEffect(() => messagesEnd.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }), [messages]);
+  useEffect(() => {
+    messagesEnd.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [messages]);
   const isThinking = status === "thinking";
   const statusText = status === "thinking" ? "正在思考" : status === "checking" ? "正在连接" : status === "unconfigured" ? "等待模型配置" : status === "error" ? "连接异常" : "AI 经纪人在线";
   const nextAction = view === "studio"

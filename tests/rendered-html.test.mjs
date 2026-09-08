@@ -74,6 +74,11 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
   assert.match(page, /setVideoReady\(false\)/);
   assert.match(page, /type="file"/);
   assert.match(page, /URL\.createObjectURL/);
+  assert.deepEqual(
+    page.split("\n").filter((line) => line.includes("useEffect(() =>") && !line.includes("useEffect(() => {")),
+    [],
+    "effects must not accidentally return DOM method results as cleanup functions",
+  );
 
   for (const productId of ["s12", "klean", "e12"]) {
     assert.match(page, new RegExp(`${productId}: \\{`));
