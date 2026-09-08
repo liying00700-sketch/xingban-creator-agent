@@ -1,8 +1,8 @@
 export const runtime = "edge";
 
 type RuntimeEnv = {
-  OPENAI_API_KEY?: string;
-  OPENAI_MODEL?: string;
+  DEEPSEEK_API_KEY?: string;
+  DEEPSEEK_MODEL?: string;
 };
 
 type AgentMessage = {
@@ -24,7 +24,8 @@ type AgentContext = {
   creativeAngle?: number;
 };
 
-const DEFAULT_MODEL = "gpt-6-astra";
+const DEFAULT_MODEL = "deepseek-v4-flash";
+const DEEPSEEK_RESPONSES_URL = "https://api.deepseek.com/responses";
 const MAX_MESSAGES = 16;
 const MAX_MESSAGE_LENGTH = 2_000;
 const MAX_TOTAL_LENGTH = 12_000;
@@ -70,7 +71,7 @@ const SYSTEM_INSTRUCTIONS = `你是“星伴”，服务 Momcozy 合作创作者
 7. 不使用 Markdown 表格；需要步骤时使用短列表。`;
 
 async function runtimeEnv(): Promise<RuntimeEnv> {
-  if (typeof process !== "undefined" && process.env.OPENAI_API_KEY) {
+  if (typeof process !== "undefined" && process.env.DEEPSEEK_API_KEY) {
     return process.env as RuntimeEnv;
   }
   try {
@@ -134,14 +135,14 @@ function cleanContext(value: unknown): AgentContext {
 async function configuration() {
   const bindings = await runtimeEnv();
   return {
-    apiKey: bindings.OPENAI_API_KEY?.trim() ?? "",
-    model: bindings.OPENAI_MODEL?.trim() || DEFAULT_MODEL,
+    apiKey: bindings.DEEPSEEK_API_KEY?.trim() ?? "",
+    model: bindings.DEEPSEEK_MODEL?.trim() || DEFAULT_MODEL,
   };
 }
 
 export async function GET(): Promise<Response> {
   const { apiKey, model } = await configuration();
-  return json({ configured: Boolean(apiKey), model: apiKey ? model : null });
+  return json({ configured: Boolean(apiKey), provider: "deepseek", model: apiKey ? model : null });
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -173,7 +174,7 @@ export async function POST(request: Request): Promise<Response> {
 
   let upstream: Response;
   try {
-    upstream = await fetch("https://api.openai.com/v1/responses", {
+    upstream = await fetch(DEEPSEEK_RESPONSES_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -184,9 +185,7 @@ export async function POST(request: Request): Promise<Response> {
         instructions: SYSTEM_INSTRUCTIONS,
         input,
         reasoning: { effort: "low" },
-        text: { verbosity: "low" },
         max_output_tokens: 900,
-        store: false,
         stream: true,
       }),
       signal: request.signal,

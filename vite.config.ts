@@ -23,9 +23,9 @@ export default defineConfig(async ({ mode }) => {
     main: "./worker/index.ts",
     compatibility_flags: ["nodejs_compat"],
     vars: {
-      OPENAI_MODEL: localEnv.OPENAI_MODEL || "gpt-6-astra",
-      ...(mode === "development" && localEnv.OPENAI_API_KEY
-        ? { OPENAI_API_KEY: localEnv.OPENAI_API_KEY }
+      DEEPSEEK_MODEL: localEnv.DEEPSEEK_MODEL || "deepseek-v4-flash",
+      ...(mode === "development" && localEnv.DEEPSEEK_API_KEY
+        ? { DEEPSEEK_API_KEY: localEnv.DEEPSEEK_API_KEY }
         : {}),
     },
     d1_databases: d1
