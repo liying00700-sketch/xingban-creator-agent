@@ -91,6 +91,13 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
   assert.match(page, /评论区洞察复盘/);
   assert.match(page, /下次拍摄指导建议/);
   assert.match(page, /本周创作孵化/);
+  assert.match(page, /const petMilestones/);
+  assert.match(page, /亲密养成计划/);
+  assert.match(page, /领取属性并领养/);
+  assert.match(page, /xingban-pet-game/);
+  assert.match(page, /喂食/);
+  assert.match(page, /穿戴围巾/);
+  assert.match(page, /月亮小窝/);
   assert.deepEqual(
     page.split("\n").filter((line) => line.includes("useEffect(() =>") && !line.includes("useEffect(() => {")),
     [],
@@ -101,7 +108,7 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
     assert.match(page, new RegExp(`${productId}: \\{`));
   }
 
-  for (const sheet of ["notifications", "invitations", "relationship", "collaboration", "brief", "compliance", "privacy", "videoMenu", "evidence", "profile", "publish", "contentDetail", "application"]) {
+  for (const sheet of ["notifications", "invitations", "relationship", "pet", "collaboration", "brief", "compliance", "privacy", "videoMenu", "evidence", "profile", "publish", "contentDetail", "application"]) {
     assert.match(page, new RegExp(`case "${sheet}"|kind === "${sheet}"`));
   }
 

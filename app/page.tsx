@@ -6,7 +6,7 @@ type View = "today" | "opportunities" | "studio" | "video" | "review" | "profile
 type ApplicationState = "idle" | "draft" | "submitted";
 type AgentStatus = "checking" | "ready" | "thinking" | "unconfigured" | "error";
 type ChatMessage = { role: "agent" | "user"; text: string; streaming?: boolean; error?: boolean };
-type SheetKind = "notifications" | "invitations" | "relationship" | "collaboration" | "brief" | "compliance" | "privacy" | "videoMenu" | "evidence" | "profile" | "publish" | "contentDetail" | "application" | null;
+type SheetKind = "notifications" | "invitations" | "relationship" | "pet" | "collaboration" | "brief" | "compliance" | "privacy" | "videoMenu" | "evidence" | "profile" | "publish" | "contentDetail" | "application" | null;
 type Product = {
   id: string;
   code: string;
@@ -51,6 +51,18 @@ type ScriptDraft = {
   version: number;
   hook: string;
   beats: { time: string; label: string; copy: string; direction: string }[];
+};
+
+type PetGameState = {
+  adopted: boolean;
+  name: string;
+  level: number;
+  experience: number;
+  fullness: number;
+  food: number;
+  claimedRewards: string[];
+  equippedOutfit: string | null;
+  equippedDecor: string | null;
 };
 
 const products: Product[] = [
@@ -117,6 +129,14 @@ const collaborationRecords: CollaborationRecord[] = [
   { id: "collab-s12-launch", productId: "s12", title: "S12 Pro 新品首发", campaign: "新品种草 · TikTok", stageIndex: 2, status: "样品运输中，预计明天送达", updatedAt: "今天 09:12", nextAction: "提前准备脚本", targetView: "studio" },
   { id: "collab-e12-travel", productId: "e12", title: "E12 一人带娃出行", campaign: "定向体验 · Reels", stageIndex: 1, status: "合作已确认，等待收货地址确认", updatedAt: "昨天 16:40", nextAction: "确认合作信息", targetView: "opportunities" },
   { id: "collab-s12-spring", productId: "s12", title: "S12 春季真实体验", campaign: "母亲节内容计划", stageIndex: 4, status: "合作已完成并结算 $1,248", updatedAt: "8 月 18 日", nextAction: "复用高表现结构", targetView: "review" },
+];
+
+const petMilestones = [
+  { id: "adopt", score: 60, type: "属性 + 宠物", title: "信任感知", description: "解锁亲密属性，并获得数字宠物领养资格。" },
+  { id: "food", score: 70, type: "宠物粮", title: "星星饼干 ×3", description: "喂养后增加饱食度与成长经验。" },
+  { id: "scarf", score: 80, type: "服装", title: "珊瑚小围巾", description: "Momcozy 默契伙伴限定装扮。" },
+  { id: "moon-bed", score: 90, type: "装饰", title: "月亮小窝", description: "布置宠物房间，解锁安睡互动。" },
+  { id: "creator-crown", score: 95, type: "稀有装饰", title: "共创星环", description: "成为品牌共创者后的专属纪念。" },
 ];
 
 const momcozyRelationshipInput = {
@@ -690,7 +710,7 @@ export default function Home() {
           }}
         />
       )}
-      {activeSheet && <ActionSheet kind={activeSheet} product={selectedProduct} profile={creatorProfile} onProfileSave={setCreatorProfile} onClose={() => setActiveSheet(null)} onGo={goTo} notify={setToast} readInvitationIds={readInvitationIds} onOpenInvitation={openBrandInvitation} selectedCollaborationId={selectedCollaborationId} onSelectCollaboration={selectCollaboration} />}
+      {activeSheet && <ActionSheet kind={activeSheet} product={selectedProduct} profile={creatorProfile} onProfileSave={setCreatorProfile} onClose={() => setActiveSheet(null)} onSwitchSheet={setActiveSheet} onGo={goTo} notify={setToast} readInvitationIds={readInvitationIds} onOpenInvitation={openBrandInvitation} selectedCollaborationId={selectedCollaborationId} onSelectCollaboration={selectCollaboration} />}
       {toast && <div className="toast"><span>✓</span>{toast}</div>}
     </div>
   );
@@ -864,6 +884,14 @@ function TodayView({ onOpen, onGo, onOpenSheet, onOpenCollaboration, onAskCoach,
             <span className="intimacy-ring" style={{ "--intimacy": `${momcozyRelationship.score}%` } as React.CSSProperties}><strong>{momcozyRelationship.score}</strong><small>/ 100</small></span>
             <span className="intimacy-copy"><b>合作 {momcozyRelationship.collaborationMonths} 个月</b><small>时长贡献 {momcozyRelationship.timeScore} 分</small><em>查看计算方式 →</em></span>
           </button>
+        </section>
+        <section className="mini-section pet-preview-card">
+          <div className="mini-title"><span>亲密养成计划</span><em>已解锁</em></div>
+          <div className="pet-preview-content">
+            <div className="pet-mini-room" aria-hidden="true"><span className="pet-mini-star">✦</span><div className="pet-character mini"><i className="pet-ear left" /><i className="pet-ear right" /><span className="pet-face"><b /><b /><em /></span></div></div>
+            <div><strong>数字伙伴「糯米」</strong><small>亲密度 {momcozyRelationship.score} · 3 个里程碑已解锁</small><p>再提升 2 分，解锁月亮小窝。</p></div>
+          </div>
+          <button className="pet-entry-button" onClick={() => onOpenSheet("pet")}>进入养成小屋 <span>→</span></button>
         </section>
         <section className="mini-section">
           <div className="mini-title"><span>合作进度 · {collaborationRecords.length}</span><button onClick={() => onOpenCollaboration(collaborationRecords[0].id)}>全部</button></div>
@@ -1242,7 +1270,7 @@ function ApplyModal({ product, state, onClose, onDraft, onSubmit, onEvidence }: 
   );
 }
 
-function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, notify, readInvitationIds, onOpenInvitation, selectedCollaborationId, onSelectCollaboration }: { kind: Exclude<SheetKind, null>; product: Product; profile: { name: string; bio: string }; onProfileSave: (profile: { name: string; bio: string }) => void; onClose: () => void; onGo: (view: View, product?: Product) => void; notify: (message: string) => void; readInvitationIds: string[]; onOpenInvitation: (invitation: BrandInvitation) => void; selectedCollaborationId: string; onSelectCollaboration: (collaborationId: string) => void }) {
+function ActionSheet({ kind, product, profile, onProfileSave, onClose, onSwitchSheet, onGo, notify, readInvitationIds, onOpenInvitation, selectedCollaborationId, onSelectCollaboration }: { kind: Exclude<SheetKind, null>; product: Product; profile: { name: string; bio: string }; onProfileSave: (profile: { name: string; bio: string }) => void; onClose: () => void; onSwitchSheet: (kind: SheetKind) => void; onGo: (view: View, product?: Product) => void; notify: (message: string) => void; readInvitationIds: string[]; onOpenInvitation: (invitation: BrandInvitation) => void; selectedCollaborationId: string; onSelectCollaboration: (collaborationId: string) => void }) {
   const [profileName, setProfileName] = useState(profile.name);
   const [profileBio, setProfileBio] = useState(profile.bio);
   const [privacy, setPrivacy] = useState({ train: false, brand: false, current: true });
@@ -1258,6 +1286,7 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, not
     notifications: ["通知中心", "3 条需要你关注的消息"],
     invitations: ["Momcozy 主动邀请", `${brandInvitations.filter((invitation) => !readInvitationIds.includes(invitation.id)).length} 条未读 · ${brandInvitations.length} 条进行中`],
     relationship: ["Momcozy 亲密度", `合作始于 ${momcozyRelationship.startedAt}`],
+    pet: ["亲密养成计划", `Momcozy 亲密度 ${momcozyRelationship.score} · ${momcozyRelationship.level}`],
     collaboration: ["合作进度", `${collaborationRecords.length} 个 Momcozy 合作项目`],
     brief: ["完整合作 Brief", product.name],
     compliance: ["发布合规检查", "6 项要求全部通过"],
@@ -1307,8 +1336,11 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, not
               <div><span>准时交付</span><strong>{momcozyRelationship.onTimeRate}%</strong><em>+{momcozyRelationship.trustBonus}</em></div>
             </div>
             <div className="relationship-next"><span><i style={{ width: `${momcozyRelationship.score}%` }} /></span><div><b>再提升 {momcozyRelationship.nextLevelScore - momcozyRelationship.score} 分，进入「品牌共创者」</b><small>完成当前邀请并保持准时交付，是最直接的提升路径。</small></div></div>
-            <button className="primary-btn full-btn" onClick={() => { onClose(); onGo("opportunities"); }}>查看 Momcozy 合作机会 →</button>
+            <button className="primary-btn full-btn" onClick={() => onSwitchSheet("pet")}>进入亲密养成小屋 →</button>
+            <button className="sheet-secondary" onClick={() => { onClose(); onGo("opportunities"); }}>查看 Momcozy 合作机会</button>
           </div>}
+
+          {kind === "pet" && <PetGame intimacyScore={momcozyRelationship.score} notify={notify} onViewRelationship={() => onSwitchSheet("relationship")} />}
 
           {kind === "collaboration" && <div className="collaboration-detail">
             <div className="collaboration-switcher" aria-label="选择合作项目">
@@ -1393,6 +1425,183 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, not
       </aside>
     </div>
   );
+}
+
+const defaultPetGameState: PetGameState = {
+  adopted: false,
+  name: "糯米",
+  level: 1,
+  experience: 0,
+  fullness: 65,
+  food: 0,
+  claimedRewards: [],
+  equippedOutfit: null,
+  equippedDecor: null,
+};
+
+function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore: number; notify: (message: string) => void; onViewRelationship: () => void }) {
+  const [game, setGame] = useState<PetGameState>(defaultPetGameState);
+  const [hydrated, setHydrated] = useState(false);
+  const [reaction, setReaction] = useState("在等你一起成长");
+  const reactionTimer = useRef<number | null>(null);
+  const nextMilestone = petMilestones.find((milestone) => milestone.score > intimacyScore);
+  const canAdopt = intimacyScore >= petMilestones[0].score;
+
+  useEffect(() => {
+    const loadSavedGame = window.setTimeout(() => {
+      try {
+        const saved = window.localStorage.getItem("xingban-pet-game");
+        if (saved) setGame({ ...defaultPetGameState, ...JSON.parse(saved) as PetGameState });
+      } catch {
+        window.localStorage.removeItem("xingban-pet-game");
+      }
+      setHydrated(true);
+    }, 0);
+    return () => window.clearTimeout(loadSavedGame);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    window.localStorage.setItem("xingban-pet-game", JSON.stringify(game));
+  }, [game, hydrated]);
+
+  useEffect(() => {
+    return () => {
+      if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current);
+    };
+  }, []);
+
+  const showReaction = (message: string) => {
+    setReaction(message);
+    if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current);
+    reactionTimer.current = window.setTimeout(() => setReaction("在等你一起成长"), 1800);
+  };
+
+  const adoptPet = () => {
+    if (!canAdopt) {
+      notify(`亲密度达到 ${petMilestones[0].score} 后即可领养`);
+      return;
+    }
+    setGame((current) => ({ ...current, adopted: true, claimedRewards: current.claimedRewards.includes("adopt") ? current.claimedRewards : [...current.claimedRewards, "adopt"] }));
+    showReaction("终于见到你啦！");
+    notify("已解锁「信任感知」并领养数字宠物糯米");
+  };
+
+  const claimReward = (rewardId: string) => {
+    const milestone = petMilestones.find((item) => item.id === rewardId);
+    if (!milestone || intimacyScore < milestone.score) {
+      notify(`还差 ${Math.max(0, (milestone?.score ?? intimacyScore) - intimacyScore)} 点亲密度解锁`);
+      return;
+    }
+    if (!game.adopted && rewardId !== "adopt") {
+      notify("先领取亲密属性并领养糯米吧");
+      return;
+    }
+    if (game.claimedRewards.includes(rewardId)) {
+      notify("这份奖励已经领取过了");
+      return;
+    }
+    if (rewardId === "adopt") {
+      adoptPet();
+      return;
+    }
+    setGame((current) => ({
+      ...current,
+      food: rewardId === "food" ? current.food + 3 : current.food,
+      claimedRewards: [...current.claimedRewards, rewardId],
+    }));
+    showReaction(rewardId === "food" ? "闻到星星饼干啦！" : "新礼物好喜欢！");
+    notify(`${milestone.title} 已放入宠物小屋`);
+  };
+
+  const addExperience = (amount: number, fullnessChange: number) => {
+    setGame((current) => {
+      const experience = current.experience + amount;
+      return { ...current, experience, level: Math.floor(experience / 100) + 1, fullness: Math.max(0, Math.min(100, current.fullness + fullnessChange)) };
+    });
+  };
+
+  const feedPet = () => {
+    if (!game.food) {
+      notify("宠物粮不足，继续提升亲密度可以领取");
+      return;
+    }
+    setGame((current) => ({
+      ...current,
+      food: current.food - 1,
+      fullness: Math.min(100, current.fullness + 25),
+      experience: current.experience + 18,
+      level: Math.floor((current.experience + 18) / 100) + 1,
+    }));
+    showReaction("好吃！成长经验 +18");
+  };
+
+  const playWithPet = () => {
+    addExperience(12, -5);
+    showReaction("一起玩真开心！经验 +12");
+  };
+
+  const toggleOutfit = () => {
+    if (!game.claimedRewards.includes("scarf")) {
+      notify("亲密度达到 80 并领取围巾后即可换装");
+      return;
+    }
+    setGame((current) => ({ ...current, equippedOutfit: current.equippedOutfit === "scarf" ? null : "scarf" }));
+    showReaction(game.equippedOutfit === "scarf" ? "换回舒服的日常造型" : "今天也要漂漂亮亮！");
+  };
+
+  const toggleDecor = () => {
+    if (!game.claimedRewards.includes("moon-bed")) {
+      notify("再提升亲密度，月亮小窝会在 90 分解锁");
+      return;
+    }
+    setGame((current) => ({ ...current, equippedDecor: current.equippedDecor === "moon-bed" ? null : "moon-bed" }));
+    showReaction("房间变得更温暖啦！");
+  };
+
+  return <div className="pet-game">
+    <div className="pet-score-header">
+      <div><span>MOMCOZY BOND</span><strong>{intimacyScore}<i>/100</i></strong><small>{nextMilestone ? `距「${nextMilestone.title}」还差 ${nextMilestone.score - intimacyScore} 分` : "全部亲密奖励已解锁"}</small></div>
+      <span className="pet-attribute"><i>✦</i><b>永久属性</b><strong>{canAdopt ? "信任感知" : "待解锁"}</strong></span>
+    </div>
+    <div className="pet-score-track"><i style={{ width: `${intimacyScore}%` }} />{petMilestones.map((milestone) => <span key={milestone.id} className={intimacyScore >= milestone.score ? "reached" : ""} style={{ left: `${milestone.score}%` }} />)}</div>
+
+    {!game.adopted ? <div className="pet-adoption">
+      <div className="pet-egg" aria-hidden="true"><span>✦</span></div>
+      <span>亲密度 {petMilestones[0].score} 解锁</span>
+      <h3>一位新伙伴正在等你</h3>
+      <p>领养后，品牌合作沉淀的亲密度会持续为它解锁粮食、服装和小屋装饰。</p>
+      <button onClick={adoptPet} disabled={!canAdopt}>领取属性并领养「糯米」</button>
+    </div> : <>
+      <div className={`pet-room ${game.equippedDecor === "moon-bed" ? "with-moon-bed" : ""}`}>
+        <span className="pet-room-spark spark-one">✦</span><span className="pet-room-spark spark-two">·</span>
+        {game.equippedDecor === "moon-bed" && <span className="pet-moon-bed" aria-hidden="true">☾</span>}
+        <div className={`pet-character ${game.equippedOutfit === "scarf" ? "with-scarf" : ""}`} aria-label={`数字宠物${game.name}`}><i className="pet-ear left" /><i className="pet-ear right" /><span className="pet-face"><i /><i /><b /></span>{game.equippedOutfit === "scarf" && <em />}</div>
+        <div className="pet-reaction" aria-live="polite">{reaction}</div>
+        <div className="pet-nameplate"><span>{game.name}</span><b>LV.{game.level}</b></div>
+      </div>
+      <div className="pet-stats">
+        <div><span>成长经验</span><b>{game.experience % 100}/100</b><i><em style={{ width: `${game.experience % 100}%` }} /></i></div>
+        <div><span>饱食度</span><b>{game.fullness}%</b><i><em style={{ width: `${game.fullness}%` }} /></i></div>
+      </div>
+      <div className="pet-actions">
+        <button onClick={feedPet}><span>★</span><strong>喂食</strong><small>星星饼干 ×{game.food}</small></button>
+        <button onClick={playWithPet}><span>♧</span><strong>玩一会</strong><small>成长经验 +12</small></button>
+        <button onClick={toggleOutfit}><span>◇</span><strong>{game.equippedOutfit === "scarf" ? "卸下围巾" : "穿戴围巾"}</strong><small>{game.claimedRewards.includes("scarf") ? "已拥有" : "80 分解锁"}</small></button>
+        <button onClick={toggleDecor}><span>☾</span><strong>{game.equippedDecor === "moon-bed" ? "收起小窝" : "布置小窝"}</strong><small>{game.claimedRewards.includes("moon-bed") ? "已拥有" : "90 分解锁"}</small></button>
+      </div>
+    </>}
+
+    <div className="pet-milestone-section">
+      <div className="pet-section-title"><div><span>GROWTH REWARDS</span><h3>亲密奖励路线</h3></div><button onClick={onViewRelationship}>查看亲密度来源 →</button></div>
+      <div className="pet-milestone-list">{petMilestones.map((milestone) => {
+        const unlocked = intimacyScore >= milestone.score;
+        const claimed = milestone.id === "adopt" ? game.adopted : game.claimedRewards.includes(milestone.id);
+        return <div key={milestone.id} className={`${unlocked ? "unlocked" : "locked"} ${claimed ? "claimed" : ""}`}><span>{unlocked ? claimed ? "✓" : "✦" : milestone.score}</span><div><i>{milestone.score} 亲密度 · {milestone.type}</i><strong>{milestone.title}</strong><small>{milestone.description}</small></div><button onClick={() => claimReward(milestone.id)} disabled={!unlocked || claimed}>{claimed ? "已领取" : unlocked ? milestone.id === "adopt" ? "领养" : "领取" : `差 ${milestone.score - intimacyScore} 分`}</button></div>;
+      })}</div>
+    </div>
+    <div className="pet-intimacy-task"><span>最快获得下一份奖励</span><div><strong>完成 S12 Pro 视频上线</strong><small>按时交付并完成品牌验收，预计亲密度 +4</small></div><button onClick={() => notify("已把 S12 Pro 上线任务加入今日清单")}>加入今日任务</button></div>
+  </div>;
 }
 
 function SheetSection({ number, title, text }: { number: string; title: string; text: string }) {
