@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { renderScriptVideo, type RenderedScriptVideo, type ScriptVideoAsset } from "./video-renderer";
 
-type View = "today" | "opportunities" | "studio" | "video" | "review" | "pet" | "profile";
+type View = "today" | "opportunities" | "studio" | "video" | "review" | "settlement" | "pet" | "profile";
 type ApplicationState = "idle" | "draft" | "submitted";
 type AgentStatus = "checking" | "ready" | "thinking" | "unconfigured" | "error";
 type ChatMessage = { role: "agent" | "user"; text: string; streaming?: boolean; error?: boolean };
@@ -46,6 +46,26 @@ type CollaborationRecord = {
   updatedAt: string;
   nextAction: string;
   targetView: View;
+};
+
+type CommissionStatus = "待确认" | "可提现" | "处理中" | "已结算";
+
+type CommissionRecord = {
+  id: string;
+  productId: Product["id"];
+  title: string;
+  campaign: string;
+  channel: string;
+  period: "2026年9月" | "2026年8月" | "2026年7月";
+  orderWindow: string;
+  attributedSales: number;
+  commissionRate: number;
+  refundAdjustment: number;
+  bonusAdjustment: number;
+  commission: number;
+  status: CommissionStatus;
+  expectedAt: string;
+  settlementNo: string;
 };
 
 type ScriptDraft = {
@@ -132,6 +152,27 @@ const collaborationRecords: CollaborationRecord[] = [
   { id: "collab-s12-spring", productId: "s12", title: "S12 春季真实体验", campaign: "母亲节内容计划", stageIndex: 4, status: "合作已完成并结算 $1,248", updatedAt: "8 月 18 日", nextAction: "复用高表现结构", targetView: "review" },
 ];
 
+const commissionRecords: CommissionRecord[] = [
+  { id: "pay-s12-spring", productId: "s12", title: "S12 春季真实体验", campaign: "母亲节内容计划", channel: "TikTok Shop", period: "2026年9月", orderWindow: "8月1日–8月31日", attributedSales: 6233, commissionRate: 12, refundAdjustment: 0, bonusAdjustment: 0, commission: 748, status: "可提现", expectedAt: "申请后 1–3 个工作日", settlementNo: "MC-240831-0186" },
+  { id: "pay-klean-night", productId: "klean", title: "KleanPal 夜间清洁", campaign: "秋季育儿效率计划", channel: "Instagram Affiliate", period: "2026年9月", orderWindow: "8月18日–9月1日", attributedSales: 3380, commissionRate: 10, refundAdjustment: 0, bonusAdjustment: 0, commission: 338, status: "可提现", expectedAt: "申请后 1–3 个工作日", settlementNo: "MC-240901-0214" },
+  { id: "pay-s12-launch", productId: "s12", title: "S12 Pro 新品首发", campaign: "新品种草 · TikTok", channel: "TikTok Shop", period: "2026年9月", orderWindow: "9月2日–9月8日", attributedSales: 1817, commissionRate: 12, refundAdjustment: -20, bonusAdjustment: 0, commission: 198, status: "待确认", expectedAt: "预计 9月16日确认", settlementNo: "MC-240908-0231" },
+  { id: "pay-e12-travel", productId: "e12", title: "E12 一人带娃出行", campaign: "定向体验 · Reels", channel: "Momcozy Affiliate", period: "2026年9月", orderWindow: "7月15日–7月31日", attributedSales: 1840, commissionRate: 15, refundAdjustment: 0, bonusAdjustment: 0, commission: 276, status: "处理中", expectedAt: "预计 9月11日到账", settlementNo: "MC-240731-0148" },
+  { id: "pay-s12-night", productId: "s12", title: "凌晨喂奶真实记录", campaign: "夏季夜间育儿计划", channel: "TikTok Shop", period: "2026年8月", orderWindow: "6月1日–6月30日", attributedSales: 5120, commissionRate: 12, refundAdjustment: -14, bonusAdjustment: 24, commission: 624, status: "已结算", expectedAt: "8月5日已到账", settlementNo: "MC-240630-0102" },
+  { id: "pay-klean-routine", productId: "klean", title: "睡前 15 分钟重启", campaign: "家庭清洁共创", channel: "Instagram Affiliate", period: "2026年7月", orderWindow: "5月1日–5月31日", attributedSales: 5120, commissionRate: 10, refundAdjustment: 0, bonusAdjustment: 0, commission: 512, status: "已结算", expectedAt: "7月6日已到账", settlementNo: "MC-240531-0087" },
+];
+
+const commissionSummary = {
+  estimated: 1284,
+  pending: commissionRecords.filter((record) => record.status === "待确认").reduce((sum, record) => sum + record.commission, 0),
+  available: commissionRecords.filter((record) => record.status === "可提现").reduce((sum, record) => sum + record.commission, 0),
+  processing: commissionRecords.filter((record) => record.status === "处理中").reduce((sum, record) => sum + record.commission, 0),
+  paidLifetime: 7864,
+};
+
+function formatUsd(value: number) {
+  return `$${value.toLocaleString("en-US")}`;
+}
+
 const petMilestones = [
   { id: "adopt", score: 60, type: "属性 + 宠物", title: "信任感知", description: "解锁亲密属性，并获得数字宠物领养资格。" },
   { id: "food", score: 70, type: "宠物粮", title: "星星饼干 ×3", description: "喂养后增加饱食度与成长经验。" },
@@ -170,6 +211,7 @@ const navItems: { id: View; label: string; icon: string; badge?: string }[] = [
   { id: "studio", label: "爆款创作", icon: "✦" },
   { id: "video", label: "AI 视频", icon: "▶" },
   { id: "review", label: "数据复盘", icon: "↗" },
+  { id: "settlement", label: "佣金结算", icon: "$", badge: "2" },
   { id: "pet", label: "亲密养成", icon: "♡" },
 ];
 
@@ -179,11 +221,12 @@ const viewTitles: Record<View, { eyebrow: string; title: string; subtitle: strin
   studio: { eyebrow: "VIRAL CONTENT STUDIO", title: "把好产品讲成好内容", subtitle: "从真实受众信号出发，而不是套一个爆款模板。" },
   video: { eyebrow: "AI VIDEO LAB", title: "把脚本变成可发布视频", subtitle: "保留你的表达，AI 负责耗时的制作环节。" },
   review: { eyebrow: "GROWTH REVIEW", title: "看懂这次，拍好下一次", subtitle: "从内容表现到商业结果，给出明确的下一步。" },
+  settlement: { eyebrow: "COMMISSION & PAYOUT", title: "佣金结算", subtitle: "每一笔收入，都算得清、追得到、提得走。" },
   pet: { eyebrow: "BONDING GARDEN", title: "亲密养成计划", subtitle: "把每一次可靠合作，变成看得见的共同成长。" },
   profile: { eyebrow: "CREATOR ASSET", title: "你的红人资产", subtitle: "让每次创作与合作，都变成可积累的职业信用。" },
 };
 
-const validViews: View[] = ["today", "opportunities", "studio", "video", "review", "pet", "profile"];
+const validViews: View[] = ["today", "opportunities", "studio", "video", "review", "settlement", "pet", "profile"];
 
 const creativeProfiles: Record<string, {
   insightLead: string;
@@ -540,6 +583,12 @@ export default function Home() {
             brandSignals: {
               activeInvitations: brandInvitations.length,
               unreadInvitations: unreadInvitationCount,
+              settlement: {
+                estimatedCommission: commissionSummary.estimated,
+                pendingCommission: commissionSummary.pending,
+                availableCommission: commissionSummary.available,
+                processingCommission: commissionSummary.processing,
+              },
               momcozyRelationship: {
                 collaborationMonths: momcozyRelationship.collaborationMonths,
                 intimacyScore: momcozyRelationship.score,
@@ -645,7 +694,7 @@ export default function Home() {
         </header>
 
         <section className="view-container">
-          {!["today", "pet", "profile"].includes(view) && (
+          {!["today", "settlement", "pet", "profile"].includes(view) && (
             <JourneyBar
               view={view}
               applicationState={applicationState}
@@ -668,6 +717,7 @@ export default function Home() {
           {view === "studio" && <StudioView product={selectedProduct} angle={creativeAngle} onAngleChange={setCreativeAngle} draft={scriptDraft} onDraftChange={updateScriptDraft} onRegenerate={regenerateScript} onGo={goTo} notify={setToast} onOpenSheet={setActiveSheet} />}
           {view === "video" && <VideoView product={selectedProduct} angle={creativeAngle} draft={scriptDraft} ready={videoReady} setReady={setVideoReady} notify={setToast} onGo={goTo} onOpenSheet={setActiveSheet} />}
           {view === "review" && <ReviewView onGo={goTo} notify={setToast} onOpenSheet={setActiveSheet} />}
+          {view === "settlement" && <SettlementView notify={setToast} />}
           {view === "pet" && <PetView intimacyScore={momcozyRelationship.score} notify={setToast} onViewRelationship={() => setActiveSheet("relationship")} />}
           {view === "profile" && <ProfileView profile={creatorProfile} notify={setToast} onOpenSheet={setActiveSheet} milestoneAdded={milestoneAdded} setMilestoneAdded={setMilestoneAdded} />}
         </section>
@@ -689,10 +739,10 @@ export default function Home() {
       )}
 
       <nav className="mobile-nav" aria-label="移动端导航">
-        {navItems.slice(0, 5).map((item) => (
+        {navItems.filter((item) => item.id !== "pet").map((item) => (
           <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => goTo(item.id)} aria-current={view === item.id ? "page" : undefined}>
             <AppIcon symbol={item.icon} />
-            <span>{item.label.replace("合作机会", "机会").replace("爆款创作", "创作").replace("数据复盘", "复盘")}</span>
+            <span>{item.label.replace("合作机会", "机会").replace("爆款创作", "创作").replace("数据复盘", "复盘").replace("佣金结算", "结算")}</span>
           </button>
         ))}
       </nav>
@@ -882,6 +932,11 @@ function TodayView({ onOpen, onGo, onOpenSheet, onOpenCollaboration, onAskCoach,
           <small>查看合作方向、报价与截止时间</small>
           <em>查看全部 →</em>
         </button>
+        <section className="mini-section commission-mini-card">
+          <div className="mini-title"><span>佣金结算</span><em>2 笔可提现</em></div>
+          <div className="commission-mini-balance"><span>可提现余额</span><strong>{formatUsd(commissionSummary.available)}</strong><small>{formatUsd(commissionSummary.pending)} 待品牌确认</small></div>
+          <button onClick={() => onGo("settlement")}>查看明细并提现 <span>→</span></button>
+        </section>
         <section className="mini-section relationship-card">
           <div className="mini-title"><span>Momcozy 亲密度</span><em>{momcozyRelationship.level}</em></div>
           <button className="intimacy-summary" onClick={() => onOpenSheet("relationship")} aria-label="查看 Momcozy 亲密度计算方式">
@@ -1279,6 +1334,123 @@ function RankRow({ rank, title, meta, theme, views, engagement, signal, verdict,
   return <button className="table-row" onClick={onOpen} aria-label={`查看内容复盘：${title}`}><span className="rank">{rank}</span><span className={`video-thumb ${theme}`}><i>▶</i></span><span className="content-name"><strong>{title}</strong><small>{meta}</small></span><span>{views}</span><span>{engagement}</span><span><b>{signal}</b> 条</span><span className="verdict-pill">{verdict}</span></button>;
 }
 
+function SettlementView({ notify }: { notify: (message: string) => void }) {
+  const [filter, setFilter] = useState<"全部" | CommissionStatus>("全部");
+  const [period, setPeriod] = useState("2026年9月");
+  const [selectedRecord, setSelectedRecord] = useState<CommissionRecord | null>(null);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [payoutMethod, setPayoutMethod] = useState<"paypal" | "bank">("paypal");
+  const [withdrawConfirmed, setWithdrawConfirmed] = useState(false);
+  const [payoutRequested, setPayoutRequested] = useState(false);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedRecord(null);
+        setWithdrawOpen(false);
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, []);
+
+  const statusFor = (record: CommissionRecord): CommissionStatus => payoutRequested && record.status === "可提现" ? "处理中" : record.status;
+  const periodRecords = commissionRecords.filter((record) => record.period === period);
+  const visibleRecords = periodRecords.filter((record) => filter === "全部" || statusFor(record) === filter);
+  const availableAmount = payoutRequested ? 0 : commissionSummary.available;
+  const processingAmount = commissionSummary.processing + (payoutRequested ? commissionSummary.available : 0);
+  const periods = ["2026年9月", "2026年8月", "2026年7月"];
+  const changePeriod = () => {
+    setPeriod((current) => periods[(periods.indexOf(current) + 1) % periods.length]);
+    setFilter("全部");
+  };
+  const exportStatement = () => {
+    const rows = periodRecords.map((record) => [record.settlementNo, record.title, record.channel, record.orderWindow, record.attributedSales, `${record.commissionRate}%`, record.refundAdjustment, record.bonusAdjustment, record.commission, statusFor(record)].join(","));
+    const csv = `\ufeff结算单号,合作内容,归因渠道,订单周期,归因成交,佣金率,退款调整,奖励调整,应结佣金,状态\n${rows.join("\n")}`;
+    const href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = `星伴佣金结算-${period}.csv`;
+    link.click();
+    URL.revokeObjectURL(href);
+    notify("佣金结算单已导出");
+  };
+  const confirmWithdrawal = () => {
+    if (!withdrawConfirmed) return;
+    setPayoutRequested(true);
+    setWithdrawOpen(false);
+    setFilter("全部");
+    notify(`已提交 ${formatUsd(commissionSummary.available)} 提现申请，预计 1–3 个工作日到账`);
+  };
+  const selectedProductForSettlement = selectedRecord ? products.find((item) => item.id === selectedRecord.productId) ?? products[0] : products[0];
+  const selectedStatus = selectedRecord ? statusFor(selectedRecord) : undefined;
+  const detailStage = selectedStatus === "待确认" ? 2 : selectedStatus === "可提现" ? 3 : selectedStatus === "处理中" ? 4 : 5;
+
+  return <>
+    <div className="settlement-layout" data-testid="settlement-view">
+      <section className="settlement-hero">
+        <div className="settlement-hero-copy"><span>CREATOR PAYOUTS · MOMCOZY</span><h2>收入不只要看得见，<br />还要<strong>清清楚楚到账</strong>。</h2><p>订单归因、退货调整、品牌确认与到账进度都集中在这里；预估金额不会提前计入可提现余额。</p></div>
+        <div className="available-balance"><span>可提现余额 · USD</span><strong>{formatUsd(availableAmount)}</strong><small>{payoutRequested ? `${formatUsd(commissionSummary.available)} 正在处理 · 预计 1–3 个工作日` : "来自 2 笔已确认佣金 · 本次提现免手续费"}</small><button onClick={() => payoutRequested ? notify("提现申请正在处理，预计 1–3 个工作日到账") : setWithdrawOpen(true)}>{payoutRequested ? "提现处理中 ···" : "申请提现 →"}</button></div>
+      </section>
+
+      <div className="settlement-metrics">
+        <div><span>本月预估佣金</span><strong>{formatUsd(commissionSummary.estimated)}</strong><small>按当前有效归因订单计算</small></div>
+        <div><span>待品牌确认</span><strong>{formatUsd(commissionSummary.pending)}</strong><small>退货期结束后进入核对</small></div>
+        <div className="accent"><span>处理中</span><strong>{formatUsd(processingAmount)}</strong><small>{payoutRequested ? "包含本次提现申请" : "1 笔预计 9月11日到账"}</small></div>
+        <div><span>累计已结算</span><strong>{formatUsd(commissionSummary.paidLifetime)}</strong><small>合作以来佣金收入</small></div>
+      </div>
+
+      <div className="settlement-columns">
+        <section className="commission-ledger">
+          <div className="settlement-section-head"><div><span>COMMISSION LEDGER</span><h3>佣金明细</h3></div><div><button onClick={changePeriod}>{period}⌄</button><button onClick={exportStatement}>导出结算单 ↗</button></div></div>
+          <div className="settlement-filters" aria-label="按结算状态筛选">
+            {(["全部", "待确认", "可提现", "处理中", "已结算"] as const).map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)} aria-pressed={filter === item}>{item}<span>{item === "全部" ? periodRecords.length : periodRecords.filter((record) => statusFor(record) === item).length}</span></button>)}
+          </div>
+          <div className="commission-table" role="table" aria-label="佣金结算记录">
+            <div className="commission-table-head" role="row"><span>合作 / 归因周期</span><span>归因成交</span><span>佣金率</span><span>应结佣金</span><span>状态</span></div>
+            {visibleRecords.map((record) => {
+              const product = products.find((item) => item.id === record.productId) ?? products[0];
+              const status = statusFor(record);
+              return <button role="row" className="commission-row" key={record.id} onClick={() => setSelectedRecord(record)} aria-label={`查看佣金明细：${record.title}`}>
+                <span className="commission-campaign"><i>{product.code}</i><span><strong>{record.title}</strong><small>{record.channel} · {record.orderWindow}</small></span></span>
+                <span>{formatUsd(record.attributedSales)}</span><span>{record.commissionRate}%</span><span className="commission-amount">{formatUsd(record.commission)}</span><span><em className={`commission-status status-${status}`}>{status}</em><small>{payoutRequested && record.status === "可提现" ? "预计 1–3 个工作日到账" : record.expectedAt}</small></span>
+              </button>;
+            })}
+            {!visibleRecords.length && <div className="settlement-empty">当前筛选下没有结算记录</div>}
+          </div>
+        </section>
+
+        <aside className="settlement-side">
+          <section className="settlement-process-card"><span className="section-eyebrow">SETTLEMENT FLOW</span><h3>一笔佣金如何到账</h3><ol><li className="done"><i>✓</i><div><strong>订单归因</strong><small>按专属链接或优惠码锁定有效成交</small></div></li><li className="done"><i>✓</i><div><strong>退货观察期</strong><small>退款与取消订单会自动扣除</small></div></li><li className="active"><i>3</i><div><strong>品牌核对</strong><small>Momcozy 确认订单与佣金比例</small></div></li><li><i>4</i><div><strong>可提现</strong><small>确认后进入你的可提现余额</small></div></li><li><i>5</i><div><strong>到账</strong><small>提交后 1–3 个工作日到收款账户</small></div></li></ol><p>星伴会提醒异常差额，但不会替你确认或放弃申诉。</p></section>
+          <section className="payout-account-card"><div><span>默认收款账户</span><em>已验证</em></div><strong>PayPal · mi***@gmail.com</strong><small>币种 USD · 无平台提现手续费</small><button onClick={() => notify("收款账户管理已打开；修改前需要再次验证身份")}>管理收款账户 →</button></section>
+          <section className="settlement-alert"><span>!</span><div><strong>有 1 笔佣金仍在确认</strong><p>S12 Pro 新品首发包含 {formatUsd(-commissionRecords[2].refundAdjustment)} 退款调整，预计 9月16日完成核对。</p><button onClick={() => setSelectedRecord(commissionRecords[2])}>查看差额依据 →</button></div></section>
+        </aside>
+      </div>
+    </div>
+
+    {selectedRecord && <div className="settlement-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedRecord(null); }}>
+      <div className="settlement-modal" role="dialog" aria-modal="true" aria-labelledby="commission-detail-title">
+        <button className="settlement-modal-close" onClick={() => setSelectedRecord(null)} aria-label="关闭佣金明细">×</button>
+        <span className="settlement-modal-kicker">{selectedRecord.settlementNo}</span><h2 id="commission-detail-title">{selectedRecord.title}</h2><p>{selectedRecord.campaign} · {selectedRecord.channel}</p>
+        <div className="settlement-detail-total"><span className="collaboration-product-code">{selectedProductForSettlement.code}</span><div><small>最终应结佣金</small><strong>{formatUsd(selectedRecord.commission)}</strong><em className={`commission-status status-${statusFor(selectedRecord)}`}>{statusFor(selectedRecord)}</em></div></div>
+        <div className="commission-breakdown"><div><span>有效归因成交</span><strong>{formatUsd(selectedRecord.attributedSales)}</strong></div><div><span>基础佣金 · {selectedRecord.commissionRate}%</span><strong>{formatUsd(Math.round(selectedRecord.attributedSales * selectedRecord.commissionRate / 100))}</strong></div><div><span>退款 / 取消调整</span><strong className={selectedRecord.refundAdjustment < 0 ? "negative" : ""}>{selectedRecord.refundAdjustment < 0 ? `-${formatUsd(Math.abs(selectedRecord.refundAdjustment))}` : selectedRecord.refundAdjustment > 0 ? `+${formatUsd(selectedRecord.refundAdjustment)}` : "$0"}</strong></div><div><span>活动奖励调整</span><strong>{selectedRecord.bonusAdjustment ? `+${formatUsd(selectedRecord.bonusAdjustment)}` : "$0"}</strong></div><div className="total"><span>本期应结</span><strong>{formatUsd(selectedRecord.commission)}</strong></div></div>
+        <div className="settlement-detail-progress">{["订单锁定", "退货期", "品牌核对", "可提现", "到账"].map((step, index) => <span key={step} className={index < detailStage ? "done" : index === detailStage ? "active" : ""}><i>{index < detailStage ? "✓" : index + 1}</i><small>{step}</small></span>)}</div>
+        <div className="settlement-detail-actions"><button onClick={() => notify(`${selectedRecord.settlementNo} 的结算单已准备下载`)}>下载该笔结算单</button><button onClick={() => notify("已创建金额复核申请，品牌财务会在 2 个工作日内回复")}>对金额有疑问？发起复核</button></div>
+      </div>
+    </div>}
+
+    {withdrawOpen && <div className="settlement-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setWithdrawOpen(false); }}>
+      <div className="settlement-modal withdrawal-modal" role="dialog" aria-modal="true" aria-labelledby="withdraw-title">
+        <button className="settlement-modal-close" onClick={() => setWithdrawOpen(false)} aria-label="关闭提现申请">×</button><span className="settlement-modal-kicker">PAYOUT REQUEST</span><h2 id="withdraw-title">申请提现</h2><p>只有已经完成品牌确认的佣金会进入本次提现。</p>
+        <div className="withdraw-amount"><span>本次提现金额</span><strong>{formatUsd(commissionSummary.available)}</strong><small>手续费 $0 · 到账币种 USD</small></div>
+        <div className="payout-methods" role="radiogroup" aria-label="选择收款方式"><button role="radio" aria-checked={payoutMethod === "paypal"} className={payoutMethod === "paypal" ? "active" : ""} onClick={() => setPayoutMethod("paypal")}><span>P</span><div><strong>PayPal</strong><small>mi***@gmail.com · 预计 1–3 个工作日</small></div><i>{payoutMethod === "paypal" ? "✓" : ""}</i></button><button role="radio" aria-checked={payoutMethod === "bank"} className={payoutMethod === "bank" ? "active" : ""} onClick={() => setPayoutMethod("bank")}><span>▤</span><div><strong>银行账户</strong><small>•••• 4826 · 预计 3–5 个工作日</small></div><i>{payoutMethod === "bank" ? "✓" : ""}</i></button></div>
+        <button className="withdraw-confirmation" role="switch" aria-checked={withdrawConfirmed} onClick={() => setWithdrawConfirmed((value) => !value)}><i>{withdrawConfirmed ? "✓" : ""}</i><span><strong>我已核对结算金额与收款账户</strong><small>提交后，本次申请进入处理阶段，无法自行撤回。</small></span></button>
+        <button className="primary-btn full-btn" disabled={!withdrawConfirmed} onClick={confirmWithdrawal}>确认提现 {formatUsd(commissionSummary.available)} →</button>
+      </div>
+    </div>}
+  </>;
+}
+
 function ProfileView({ profile, notify, onOpenSheet, milestoneAdded, setMilestoneAdded }: { profile: { name: string; bio: string }; notify: (m: string) => void; onOpenSheet: (kind: SheetKind) => void; milestoneAdded: boolean; setMilestoneAdded: (added: boolean) => void }) {
   return (
     <div className="profile-layout">
@@ -1302,7 +1474,9 @@ function AgentPanel({ messages, chatInput, setChatInput, sendMessage, close, onG
   }, [messages]);
   const isThinking = status === "thinking";
   const statusText = status === "thinking" ? "正在思考" : status === "checking" ? "正在连接" : status === "unconfigured" ? "等待模型配置" : status === "error" ? "连接异常" : "AI 经纪人在线";
-  const nextAction = view === "pet"
+  const nextAction = view === "settlement"
+    ? { title: "先核对金额，再发起提现", copy: "预估佣金会经过退货期与品牌核对，只有“可提现”的金额才会进入收款账户。", label: "回到结算总览", target: "settlement" as View }
+    : view === "pet"
     ? { title: "可靠合作，才是亲密度的成长来源", copy: "完成当前合作并按时上线，预计可以解锁下一份小屋装饰。", label: "查看合作进度", target: "opportunities" as View }
     : view === "studio"
       ? { title: "脚本确认后，生成第一版视频", copy: "素材和表达仍由你控制，AI 只负责剪辑与适配。", label: "去生成视频", target: "video" as View }

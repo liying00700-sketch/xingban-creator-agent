@@ -39,6 +39,7 @@ test("server-renders the Creator Agent product shell", async () => {
   assert.match(html, /爆款创作/);
   assert.match(html, /AI 视频/);
   assert.match(html, /数据复盘/);
+  assert.match(html, /佣金结算/);
   assert.match(html, /Momcozy 新品合作/i);
   assert.match(html, /品牌主动邀请/);
   assert.match(html, /Momcozy 亲密度/);
@@ -104,6 +105,13 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
   assert.match(page, /评论区洞察复盘/);
   assert.match(page, /下次拍摄指导建议/);
   assert.match(page, /本周创作孵化/);
+  assert.match(page, /const commissionRecords/);
+  assert.match(page, /view === "settlement"/);
+  assert.match(page, /function SettlementView/);
+  assert.match(page, /申请提现/);
+  assert.match(page, /退款 \/ 取消调整/);
+  assert.match(page, /发起复核/);
+  assert.match(styles, /\.settlement-layout/);
   assert.match(page, /const petMilestones/);
   assert.match(page, /view === "pet"/);
   assert.match(page, /label: "亲密养成"/);
@@ -190,6 +198,7 @@ test("proxies a grounded, stateless streaming conversation to the DeepSeek Respo
             brandSignals: {
               activeInvitations: 3,
               unreadInvitations: 2,
+              settlement: { estimatedCommission: 1284, pendingCommission: 198, availableCommission: 1086, processingCommission: 276 },
               momcozyRelationship: { collaborationMonths: 18, intimacyScore: 88, intimacyLevel: "默契伙伴" },
             },
           },
@@ -208,9 +217,11 @@ test("proxies a grounded, stateless streaming conversation to the DeepSeek Respo
     assert.equal(upstreamRequest?.body?.reasoning?.effort, "low");
     assert.equal(upstreamRequest?.body?.store, undefined);
     assert.match(upstreamRequest?.body?.instructions ?? "", /不得声称已经替创作者提交申请/);
+    assert.match(upstreamRequest?.body?.instructions ?? "", /不得把预估佣金描述为已到账收入/);
     assert.match(JSON.stringify(upstreamRequest?.body?.input), /opportunityCatalog/);
     const contextPayload = JSON.parse(upstreamRequest.body.input[0].content.split("\n").slice(1).join("\n"));
     assert.equal(contextPayload.creatorContext.brandSignals.unreadInvitations, 2);
+    assert.equal(contextPayload.creatorContext.brandSignals.settlement.availableCommission, 1086);
     assert.equal(contextPayload.creatorContext.brandSignals.momcozyRelationship.intimacyScore, 88);
   } finally {
     globalThis.fetch = originalFetch;
