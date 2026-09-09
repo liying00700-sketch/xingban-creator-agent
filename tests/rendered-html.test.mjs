@@ -65,7 +65,11 @@ test("ships product metadata and a bespoke social card", async () => {
 });
 
 test("keeps navigation, product work, and secondary actions wired", async () => {
-  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const [page, videoRenderer, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/video-renderer.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
 
   assert.match(page, /window\.history\.pushState/);
   assert.match(page, /window\.history\.back\(\)/);
@@ -88,16 +92,30 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
   assert.match(page, /修改脚本/);
   assert.match(page, /重新生成脚本/);
   assert.match(page, /重新生成视频/);
+  assert.match(page, /根据当前脚本生成视频/);
+  assert.match(page, /下载视频/);
+  assert.match(videoRenderer, /canvas\.captureStream\(24\)/);
+  assert.match(videoRenderer, /new MediaRecorder/);
+  assert.match(videoRenderer, /buildTimeline\(request\.script\)/);
+  assert.match(videoRenderer, /new Blob\(chunks/);
+  assert.match(videoRenderer, /request\.onProgress\(100\)/);
+  assert.match(styles, /\.main-content\.with-agent \.preview-panel\{order:-1/);
+  assert.match(styles, /\.main-content\.with-agent \.video-layout\{margin-right:340px\}/);
   assert.match(page, /评论区洞察复盘/);
   assert.match(page, /下次拍摄指导建议/);
   assert.match(page, /本周创作孵化/);
   assert.match(page, /const petMilestones/);
+  assert.match(page, /view === "pet"/);
+  assert.match(page, /label: "亲密养成"/);
   assert.match(page, /亲密养成计划/);
   assert.match(page, /领取属性并领养/);
   assert.match(page, /xingban-pet-game/);
   assert.match(page, /喂食/);
   assert.match(page, /穿戴围巾/);
   assert.match(page, /月亮小窝/);
+  assert.match(page, /function CatAvatar/);
+  assert.match(page, /game\.fullness >= 100/);
+  assert.match(page, /game\.fullness <= 10/);
   assert.deepEqual(
     page.split("\n").filter((line) => line.includes("useEffect(() =>") && !line.includes("useEffect(() => {")),
     [],
@@ -108,7 +126,7 @@ test("keeps navigation, product work, and secondary actions wired", async () => 
     assert.match(page, new RegExp(`${productId}: \\{`));
   }
 
-  for (const sheet of ["notifications", "invitations", "relationship", "pet", "collaboration", "brief", "compliance", "privacy", "videoMenu", "evidence", "profile", "publish", "contentDetail", "application"]) {
+  for (const sheet of ["notifications", "invitations", "relationship", "collaboration", "brief", "compliance", "privacy", "videoMenu", "evidence", "profile", "publish", "contentDetail", "application"]) {
     assert.match(page, new RegExp(`case "${sheet}"|kind === "${sheet}"`));
   }
 

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { renderScriptVideo, type RenderedScriptVideo, type ScriptVideoAsset } from "./video-renderer";
 
-type View = "today" | "opportunities" | "studio" | "video" | "review" | "profile";
+type View = "today" | "opportunities" | "studio" | "video" | "review" | "pet" | "profile";
 type ApplicationState = "idle" | "draft" | "submitted";
 type AgentStatus = "checking" | "ready" | "thinking" | "unconfigured" | "error";
 type ChatMessage = { role: "agent" | "user"; text: string; streaming?: boolean; error?: boolean };
-type SheetKind = "notifications" | "invitations" | "relationship" | "pet" | "collaboration" | "brief" | "compliance" | "privacy" | "videoMenu" | "evidence" | "profile" | "publish" | "contentDetail" | "application" | null;
+type SheetKind = "notifications" | "invitations" | "relationship" | "collaboration" | "brief" | "compliance" | "privacy" | "videoMenu" | "evidence" | "profile" | "publish" | "contentDetail" | "application" | null;
 type Product = {
   id: string;
   code: string;
@@ -169,6 +170,7 @@ const navItems: { id: View; label: string; icon: string; badge?: string }[] = [
   { id: "studio", label: "爆款创作", icon: "✦" },
   { id: "video", label: "AI 视频", icon: "▶" },
   { id: "review", label: "数据复盘", icon: "↗" },
+  { id: "pet", label: "亲密养成", icon: "♡" },
 ];
 
 const viewTitles: Record<View, { eyebrow: string; title: string; subtitle: string }> = {
@@ -177,10 +179,11 @@ const viewTitles: Record<View, { eyebrow: string; title: string; subtitle: strin
   studio: { eyebrow: "VIRAL CONTENT STUDIO", title: "把好产品讲成好内容", subtitle: "从真实受众信号出发，而不是套一个爆款模板。" },
   video: { eyebrow: "AI VIDEO LAB", title: "把脚本变成可发布视频", subtitle: "保留你的表达，AI 负责耗时的制作环节。" },
   review: { eyebrow: "GROWTH REVIEW", title: "看懂这次，拍好下一次", subtitle: "从内容表现到商业结果，给出明确的下一步。" },
+  pet: { eyebrow: "BONDING GARDEN", title: "亲密养成计划", subtitle: "把每一次可靠合作，变成看得见的共同成长。" },
   profile: { eyebrow: "CREATOR ASSET", title: "你的红人资产", subtitle: "让每次创作与合作，都变成可积累的职业信用。" },
 };
 
-const validViews: View[] = ["today", "opportunities", "studio", "video", "review", "profile"];
+const validViews: View[] = ["today", "opportunities", "studio", "video", "review", "pet", "profile"];
 
 const creativeProfiles: Record<string, {
   insightLead: string;
@@ -642,7 +645,7 @@ export default function Home() {
         </header>
 
         <section className="view-container">
-          {!["today", "profile"].includes(view) && (
+          {!["today", "pet", "profile"].includes(view) && (
             <JourneyBar
               view={view}
               applicationState={applicationState}
@@ -663,8 +666,9 @@ export default function Home() {
             />
           )}
           {view === "studio" && <StudioView product={selectedProduct} angle={creativeAngle} onAngleChange={setCreativeAngle} draft={scriptDraft} onDraftChange={updateScriptDraft} onRegenerate={regenerateScript} onGo={goTo} notify={setToast} onOpenSheet={setActiveSheet} />}
-          {view === "video" && <VideoView product={selectedProduct} angle={creativeAngle} scriptVersion={scriptDraft.version} ready={videoReady} setReady={setVideoReady} notify={setToast} onGo={goTo} onOpenSheet={setActiveSheet} />}
+          {view === "video" && <VideoView product={selectedProduct} angle={creativeAngle} draft={scriptDraft} ready={videoReady} setReady={setVideoReady} notify={setToast} onGo={goTo} onOpenSheet={setActiveSheet} />}
           {view === "review" && <ReviewView onGo={goTo} notify={setToast} onOpenSheet={setActiveSheet} />}
+          {view === "pet" && <PetView intimacyScore={momcozyRelationship.score} notify={setToast} onViewRelationship={() => setActiveSheet("relationship")} />}
           {view === "profile" && <ProfileView profile={creatorProfile} notify={setToast} onOpenSheet={setActiveSheet} milestoneAdded={milestoneAdded} setMilestoneAdded={setMilestoneAdded} />}
         </section>
       </main>
@@ -710,7 +714,7 @@ export default function Home() {
           }}
         />
       )}
-      {activeSheet && <ActionSheet kind={activeSheet} product={selectedProduct} profile={creatorProfile} onProfileSave={setCreatorProfile} onClose={() => setActiveSheet(null)} onSwitchSheet={setActiveSheet} onGo={goTo} notify={setToast} readInvitationIds={readInvitationIds} onOpenInvitation={openBrandInvitation} selectedCollaborationId={selectedCollaborationId} onSelectCollaboration={selectCollaboration} />}
+      {activeSheet && <ActionSheet kind={activeSheet} product={selectedProduct} profile={creatorProfile} onProfileSave={setCreatorProfile} onClose={() => setActiveSheet(null)} onGo={goTo} notify={setToast} readInvitationIds={readInvitationIds} onOpenInvitation={openBrandInvitation} selectedCollaborationId={selectedCollaborationId} onSelectCollaboration={selectCollaboration} />}
       {toast && <div className="toast"><span>✓</span>{toast}</div>}
     </div>
   );
@@ -888,10 +892,10 @@ function TodayView({ onOpen, onGo, onOpenSheet, onOpenCollaboration, onAskCoach,
         <section className="mini-section pet-preview-card">
           <div className="mini-title"><span>亲密养成计划</span><em>已解锁</em></div>
           <div className="pet-preview-content">
-            <div className="pet-mini-room" aria-hidden="true"><span className="pet-mini-star">✦</span><div className="pet-character mini"><i className="pet-ear left" /><i className="pet-ear right" /><span className="pet-face"><b /><b /><em /></span></div></div>
+            <div className="pet-mini-room" aria-hidden="true"><span className="pet-mini-star">✦</span><CatAvatar mini scarf /></div>
             <div><strong>数字伙伴「糯米」</strong><small>亲密度 {momcozyRelationship.score} · 3 个里程碑已解锁</small><p>再提升 2 分，解锁月亮小窝。</p></div>
           </div>
-          <button className="pet-entry-button" onClick={() => onOpenSheet("pet")}>进入养成小屋 <span>→</span></button>
+          <button className="pet-entry-button" onClick={() => onGo("pet")}>进入养成小屋 <span>→</span></button>
         </section>
         <section className="mini-section">
           <div className="mini-title"><span>合作进度 · {collaborationRecords.length}</span><button onClick={() => onOpenCollaboration(collaborationRecords[0].id)}>全部</button></div>
@@ -1055,10 +1059,10 @@ function ScriptBeat({ beat, editing, onChange }: { beat: ScriptDraft["beats"][nu
   return <div className={`script-beat ${editing ? "editing" : ""}`}><span className="beat-time">{beat.time}</span><span className="beat-dot" /><div><span>{beat.label}</span>{editing ? <textarea aria-label={`修改${beat.label}脚本`} value={beat.copy} onChange={(event) => onChange("copy", event.target.value)} /> : <p>{beat.copy}</p>}{editing ? <input aria-label={`修改${beat.label}镜头指导`} value={beat.direction} onChange={(event) => onChange("direction", event.target.value)} /> : <small>{beat.direction}</small>}</div></div>;
 }
 
-function VideoView({ product, angle, scriptVersion, ready, setReady, notify, onGo, onOpenSheet }: {
+function VideoView({ product, angle, draft, ready, setReady, notify, onGo, onOpenSheet }: {
   product: Product;
   angle: number;
-  scriptVersion: number;
+  draft: ScriptDraft;
   ready: boolean;
   setReady: (ready: boolean) => void;
   notify: (m: string) => void;
@@ -1066,60 +1070,136 @@ function VideoView({ product, angle, scriptVersion, ready, setReady, notify, onG
   onOpenSheet: (kind: SheetKind) => void;
 }) {
   const [ratio, setRatio] = useState("9:16");
-  const [voice, setVoice] = useState("保留我的原声");
-  const [subtitle, setSubtitle] = useState("中文 + 重点高亮");
+  const [soundtrack, setSoundtrack] = useState("温柔氛围");
+  const [subtitle, setSubtitle] = useState("重点词高亮");
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [videoVersion, setVideoVersion] = useState(1);
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [uploadedAssets, setUploadedAssets] = useState<ScriptVideoAsset[]>([]);
+  const [output, setOutput] = useState<(RenderedScriptVideo & { url: string; version: number }) | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const abortController = useRef<AbortController | null>(null);
+  const assetUrls = useRef<string[]>([]);
+  const outputUrl = useRef<string | null>(null);
+  const versionCounter = useRef(0);
   const profile = creativeProfiles[product.id];
+
   useEffect(() => {
-    if (!generating) return;
-    const timer = window.setInterval(() => setProgress((current) => {
-      if (current >= 100) {
-        window.clearInterval(timer);
-        setGenerating(false);
-        setReady(true);
-        return 100;
-      }
-      return current + 10;
-    }), 180);
-    return () => window.clearInterval(timer);
-  }, [generating, setReady]);
-  const start = () => {
-    if (ready) setVideoVersion((version) => version + 1);
+    return () => {
+      abortController.current?.abort();
+      assetUrls.current.forEach((url) => URL.revokeObjectURL(url));
+      if (outputUrl.current) URL.revokeObjectURL(outputUrl.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (ready && !outputUrl.current) setReady(false);
+  }, [ready, setReady]);
+
+  const discardOutput = () => {
+    if (outputUrl.current) URL.revokeObjectURL(outputUrl.current);
+    outputUrl.current = null;
+    setOutput(null);
     setReady(false);
+  };
+
+  const start = async () => {
+    if (generating) return;
+    if (!canvasRef.current) {
+      notify("视频画布尚未就绪，请稍后再试");
+      return;
+    }
+    const nextVersion = versionCounter.current + 1;
+    discardOutput();
     setProgress(0);
     setGenerating(true);
+    const controller = new AbortController();
+    abortController.current = controller;
+    try {
+      const rendered = await renderScriptVideo({
+        canvas: canvasRef.current,
+        product: { code: product.code, name: product.name, palette: product.palette },
+        script: { hook: draft.hook, beats: draft.beats },
+        ratio,
+        subtitle,
+        soundtrack,
+        assets: uploadedAssets,
+        signal: controller.signal,
+        onProgress: setProgress,
+      });
+      const url = URL.createObjectURL(rendered.blob);
+      outputUrl.current = url;
+      versionCounter.current = nextVersion;
+      setVideoVersion(nextVersion);
+      setOutput({ ...rendered, url, version: nextVersion });
+      setReady(true);
+      notify(`视频 V${nextVersion} 已生成，可以预览或下载`);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        notify("已取消本次视频生成");
+      } else {
+        console.error("[星伴视频生成]", error);
+        notify("视频生成遇到问题，请减少素材数量后重试");
+      }
+    } finally {
+      abortController.current = null;
+      setGenerating(false);
+    }
   };
+
+  const cancelGeneration = () => abortController.current?.abort();
+
   const addFiles = (files: FileList | null) => {
     if (!files?.length) return;
-    const names = Array.from(files).map((file) => file.name);
-    setUploadedFiles(names);
-    notify(`已加入 ${names.length} 个本地素材`);
+    const accepted = Array.from(files).filter((file) => file.type.startsWith("video/") || file.type.startsWith("image/")).slice(0, 8);
+    assetUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    const nextAssets = accepted.map((file) => ({ name: file.name, type: file.type, url: URL.createObjectURL(file) }));
+    assetUrls.current = nextAssets.map((asset) => asset.url);
+    setUploadedAssets(nextAssets);
+    discardOutput();
+    if (fileInput.current) fileInput.current.value = "";
+    notify(`已加入 ${nextAssets.length} 个本地素材，生成时会按分镜自动裁切`);
   };
+
+  const updateRatio = (value: string) => { setRatio(value); discardOutput(); };
+  const updateSoundtrack = (value: string) => { setSoundtrack(value); discardOutput(); };
+  const updateSubtitle = (value: string) => { setSubtitle(value); discardOutput(); };
+  const downloadVideo = () => {
+    if (!output) return;
+    const link = document.createElement("a");
+    link.href = output.url;
+    link.download = `星伴-${product.code}-脚本V${draft.version}-视频V${output.version}.${output.mimeType.includes("mp4") ? "mp4" : "webm"}`;
+    link.click();
+    notify("视频已开始下载");
+  };
+  const estimatedDuration = product.id === "e12" ? 42 : product.id === "klean" ? 45 : 35;
+  const sizeLabel = output ? `${(output.blob.size / 1024 / 1024).toFixed(1)} MB` : "生成后显示";
+  const resolutionLabel = ratio === "9:16" ? "540×960" : ratio === "1:1" ? "720×720" : "960×540";
+
   return (
     <div className="video-layout" data-testid="video-view">
       <section className="video-settings">
-        <div className="project-status"><div className="status-icon">✦</div><div><span>来自爆款创作 · {product.name}</span><strong>{profile.angles[angle].title}</strong><small>脚本 V{scriptVersion} · {product.id === "e12" ? "42" : product.id === "klean" ? "45" : "35"} 秒 · 合规检查已通过</small></div><button onClick={() => onGo("studio")}>返回修改脚本</button></div>
+        <div className="project-status"><div className="status-icon">✦</div><div><span>来自爆款创作 · {product.name}</span><strong>{profile.angles[angle].title}</strong><small>脚本 V{draft.version} · {estimatedDuration} 秒 · {draft.beats.length + 1} 个分镜 · 合规检查已通过</small></div><button onClick={() => onGo("studio")}>返回修改脚本</button></div>
         <div className="setting-group">
-          <div className="setting-title"><span>01</span><div><strong>选择你的素材</strong><small>AI 会优先保留真人出镜片段</small></div></div>
+          <div className="setting-title"><span>01</span><div><strong>选择你的素材</strong><small>可不上传：星伴会先根据脚本生成完整动态样片</small></div></div>
           <input ref={fileInput} className="visually-hidden" type="file" accept="video/*,image/*" multiple onChange={(event) => addFiles(event.target.files)} />
-          <div className="upload-grid"><button className="upload-box" onClick={() => fileInput.current?.click()}><span>＋</span><strong>{uploadedFiles.length ? `已选择 ${uploadedFiles.length} 个素材` : "上传本次拍摄"}</strong><small>{uploadedFiles.length ? uploadedFiles.slice(0, 2).join("、") : "支持视频、照片、产品素材"}</small></button><div className="asset-box asset-one"><span>00:08</span><i>✓</i><small>真人场景.mov</small></div><div className="asset-box asset-two"><span>00:12</span><i>✓</i><small>{product.code} 使用.mov</small></div></div>
+          <div className="upload-grid"><button className="upload-box" disabled={generating} onClick={() => fileInput.current?.click()}><span>＋</span><strong>{uploadedAssets.length ? `已选择 ${uploadedAssets.length} 个素材` : "上传本次拍摄"}</strong><small>{uploadedAssets.length ? uploadedAssets.slice(0, 2).map((asset) => asset.name).join("、") : "支持视频、照片；最多 8 个"}</small></button><div className="asset-box asset-one"><span>HOOK</span><i>✓</i><small>脚本真人开场</small></div><div className="asset-box asset-two"><span>{draft.beats.length} 段</span><i>✓</i><small>脚本分镜已就绪</small></div></div>
         </div>
-        <div className="setting-group"><div className="setting-title"><span>02</span><div><strong>设定成片风格</strong><small>所有选项生成前都可以修改</small></div></div><div className="option-rows"><div className="option-row"><span>视频比例</span><div>{["9:16", "1:1", "16:9"].map((item) => <button key={item} className={ratio === item ? "active" : ""} onClick={() => setRatio(item)} aria-pressed={ratio === item}>{item}</button>)}</div></div><div className="option-row"><span>声音</span><div>{["保留我的原声", "AI 清晰化", "AI 配音"].map((item) => <button key={item} className={voice === item ? "active" : ""} onClick={() => setVoice(item)} aria-pressed={voice === item}>{item}</button>)}</div></div><div className="option-row"><span>字幕</span><div>{["中文 + 重点高亮", "中英双语"].map((item) => <button key={item} className={subtitle === item ? "active" : ""} onClick={() => setSubtitle(item)} aria-pressed={subtitle === item}>{item}</button>)}</div></div></div></div>
-        <div className="rights-box"><span>盾</span><div><strong>你的素材，你的决定</strong><small>本次素材仅用于生成当前项目，不会自动授权给品牌或用于模型训练。</small></div><button onClick={() => onOpenSheet("privacy")}>隐私设置</button></div>
+        <div className="setting-group"><div className="setting-title"><span>02</span><div><strong>设定成片风格</strong><small>修改设置会清除旧成片，确保预览与设置一致</small></div></div><div className="option-rows"><div className="option-row"><span>视频比例</span><div>{["9:16", "1:1", "16:9"].map((item) => <button disabled={generating} key={item} className={ratio === item ? "active" : ""} onClick={() => updateRatio(item)} aria-pressed={ratio === item}>{item}</button>)}</div></div><div className="option-row"><span>音轨</span><div>{["温柔氛围", "轻快节奏", "静音字幕版"].map((item) => <button disabled={generating} key={item} className={soundtrack === item ? "active" : ""} onClick={() => updateSoundtrack(item)} aria-pressed={soundtrack === item}>{item}</button>)}</div></div><div className="option-row"><span>字幕</span><div>{["重点词高亮", "中文极简"].map((item) => <button disabled={generating} key={item} className={subtitle === item ? "active" : ""} onClick={() => updateSubtitle(item)} aria-pressed={subtitle === item}>{item}</button>)}</div></div></div></div>
+        <div className="render-explainer"><span>本地成片</span><div><strong>脚本直接驱动 {draft.beats.length + 1} 个动态分镜</strong><small>Hook、口播、镜头指导、字幕和节奏都会进入视频；无需把素材上传到第三方。</small></div></div>
+        <div className="rights-box"><span>盾</span><div><strong>你的素材，你的决定</strong><small>素材只在当前浏览器内参与渲染，不会自动授权给品牌或用于模型训练。</small></div><button onClick={() => onOpenSheet("privacy")}>隐私设置</button></div>
       </section>
       <aside className="preview-panel">
-        <div className="preview-head"><div><span>AI 成片预览 · 视频 V{videoVersion}</span><small>脚本 V{scriptVersion} · {ratio} · 1080P · {subtitle}</small></div><button onClick={() => onOpenSheet("videoMenu")} aria-label="打开视频项目菜单">···</button></div>
-        <div className={`phone-preview ${ready ? "ready" : ""}`}>
-          <div className="phone-scene"><span className="scene-moon">◐</span><div className="scene-person"><i /><b /></div><div className="scene-product">{product.code}</div><div className="caption-line"><span>{profile.caption[0]}</span><strong>{profile.caption[1]}</strong></div><div className="video-progress"><i /></div></div>
-          {generating && <div className="generate-overlay"><div className="spinner" /><strong>正在生成你的成片</strong><span>{progress}% · 正在匹配镜头与节奏</span><div><i style={{ width: `${progress}%` }} /></div></div>}
+        <div className="preview-head"><div><span>脚本成片预览 · 视频 V{output?.version ?? videoVersion}</span><small>脚本 V{draft.version} · {ratio} · {resolutionLabel} · {subtitle}</small></div><button onClick={() => onOpenSheet("videoMenu")} aria-label="打开视频项目菜单">···</button></div>
+        <div className={`phone-preview ${ready ? "ready" : ""} ratio-${ratio.replace(":", "-")}`}>
+          {output ? <video className="generated-video" src={output.url} controls playsInline preload="metadata" aria-label={`视频 V${output.version} 成片预览`} /> : !generating ? <div className="phone-scene"><span className="scene-moon">◐</span><div className="scene-person"><i /><b /></div><div className="scene-product">{product.code}</div><div className="caption-line"><span>{profile.caption[0]}</span><strong>{profile.caption[1]}</strong></div><div className="video-progress"><i /></div></div> : null}
+          <canvas ref={canvasRef} className={generating ? "render-canvas visible" : "render-canvas"} aria-label="正在渲染的视频画面" />
+          {generating && <div className="generate-overlay"><div className="spinner" /><strong>正在逐帧生成脚本成片</strong><span>{progress}% · 已写入字幕、镜头与音轨</span><div className="render-progress"><i style={{ width: `${progress}%` }} /></div><button onClick={cancelGeneration}>取消生成</button></div>}
         </div>
-        <div className="preview-summary"><div><span>预计成片</span><b>00:35</b></div><div><span>素材使用</span><b>7 / 11</b></div><div><span>预计生成</span><b>约 18 秒</b></div></div>
-        {!ready ? <button className="primary-btn full-btn" disabled={generating} onClick={start}>{generating ? `正在生成 ${progress}%` : "生成第一版成片 ✦"}</button> : <div className="ready-actions"><button className="secondary-btn" onClick={start}>重新生成视频 ↻</button><button className="primary-btn" onClick={() => onOpenSheet("publish")}>进入发布前检查 →</button></div>}
-        <p className="generation-cost">本次生成预计消耗 1 个视频额度 · 本月剩余 8 个</p>
+        <div className="preview-summary"><div><span>成片时长</span><b>00:{String(output?.duration ?? estimatedDuration).padStart(2, "0")}</b></div><div><span>动态分镜</span><b>{draft.beats.length + 1} 段</b></div><div><span>文件大小</span><b>{sizeLabel}</b></div></div>
+        {!ready ? <button className="primary-btn full-btn" disabled={generating} onClick={start}>{generating ? `正在生成 ${progress}%` : "根据当前脚本生成视频 ✦"}</button> : <div className="ready-actions video-ready-actions"><button className="secondary-btn" onClick={start}>重新生成视频 ↻</button><button className="secondary-btn" onClick={downloadVideo}>下载视频 ↓</button><button className="primary-btn" onClick={() => onOpenSheet("publish")}>发布前检查 →</button></div>}
+        <p className="generation-cost">脚本与素材均在本地浏览器生成 · 不消耗第三方视频额度</p>
       </aside>
     </div>
   );
@@ -1222,8 +1302,10 @@ function AgentPanel({ messages, chatInput, setChatInput, sendMessage, close, onG
   }, [messages]);
   const isThinking = status === "thinking";
   const statusText = status === "thinking" ? "正在思考" : status === "checking" ? "正在连接" : status === "unconfigured" ? "等待模型配置" : status === "error" ? "连接异常" : "AI 经纪人在线";
-  const nextAction = view === "studio"
-    ? { title: "脚本确认后，生成第一版视频", copy: "素材和表达仍由你控制，AI 只负责剪辑与适配。", label: "去生成视频", target: "video" as View }
+  const nextAction = view === "pet"
+    ? { title: "可靠合作，才是亲密度的成长来源", copy: "完成当前合作并按时上线，预计可以解锁下一份小屋装饰。", label: "查看合作进度", target: "opportunities" as View }
+    : view === "studio"
+      ? { title: "脚本确认后，生成第一版视频", copy: "素材和表达仍由你控制，AI 只负责剪辑与适配。", label: "去生成视频", target: "video" as View }
     : view === "video"
       ? { title: "保存成片，再回到数据闭环", copy: "发布前会先检查授权、字幕与品牌要求。", label: "查看复盘方法", target: "review" as View }
       : applicationState === "submitted"
@@ -1270,7 +1352,7 @@ function ApplyModal({ product, state, onClose, onDraft, onSubmit, onEvidence }: 
   );
 }
 
-function ActionSheet({ kind, product, profile, onProfileSave, onClose, onSwitchSheet, onGo, notify, readInvitationIds, onOpenInvitation, selectedCollaborationId, onSelectCollaboration }: { kind: Exclude<SheetKind, null>; product: Product; profile: { name: string; bio: string }; onProfileSave: (profile: { name: string; bio: string }) => void; onClose: () => void; onSwitchSheet: (kind: SheetKind) => void; onGo: (view: View, product?: Product) => void; notify: (message: string) => void; readInvitationIds: string[]; onOpenInvitation: (invitation: BrandInvitation) => void; selectedCollaborationId: string; onSelectCollaboration: (collaborationId: string) => void }) {
+function ActionSheet({ kind, product, profile, onProfileSave, onClose, onGo, notify, readInvitationIds, onOpenInvitation, selectedCollaborationId, onSelectCollaboration }: { kind: Exclude<SheetKind, null>; product: Product; profile: { name: string; bio: string }; onProfileSave: (profile: { name: string; bio: string }) => void; onClose: () => void; onGo: (view: View, product?: Product) => void; notify: (message: string) => void; readInvitationIds: string[]; onOpenInvitation: (invitation: BrandInvitation) => void; selectedCollaborationId: string; onSelectCollaboration: (collaborationId: string) => void }) {
   const [profileName, setProfileName] = useState(profile.name);
   const [profileBio, setProfileBio] = useState(profile.bio);
   const [privacy, setPrivacy] = useState({ train: false, brand: false, current: true });
@@ -1286,7 +1368,6 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onSwitchS
     notifications: ["通知中心", "3 条需要你关注的消息"],
     invitations: ["Momcozy 主动邀请", `${brandInvitations.filter((invitation) => !readInvitationIds.includes(invitation.id)).length} 条未读 · ${brandInvitations.length} 条进行中`],
     relationship: ["Momcozy 亲密度", `合作始于 ${momcozyRelationship.startedAt}`],
-    pet: ["亲密养成计划", `Momcozy 亲密度 ${momcozyRelationship.score} · ${momcozyRelationship.level}`],
     collaboration: ["合作进度", `${collaborationRecords.length} 个 Momcozy 合作项目`],
     brief: ["完整合作 Brief", product.name],
     compliance: ["发布合规检查", "6 项要求全部通过"],
@@ -1336,11 +1417,9 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onSwitchS
               <div><span>准时交付</span><strong>{momcozyRelationship.onTimeRate}%</strong><em>+{momcozyRelationship.trustBonus}</em></div>
             </div>
             <div className="relationship-next"><span><i style={{ width: `${momcozyRelationship.score}%` }} /></span><div><b>再提升 {momcozyRelationship.nextLevelScore - momcozyRelationship.score} 分，进入「品牌共创者」</b><small>完成当前邀请并保持准时交付，是最直接的提升路径。</small></div></div>
-            <button className="primary-btn full-btn" onClick={() => onSwitchSheet("pet")}>进入亲密养成小屋 →</button>
+            <button className="primary-btn full-btn" onClick={() => go("pet")}>进入亲密养成小屋 →</button>
             <button className="sheet-secondary" onClick={() => { onClose(); onGo("opportunities"); }}>查看 Momcozy 合作机会</button>
           </div>}
-
-          {kind === "pet" && <PetGame intimacyScore={momcozyRelationship.score} notify={notify} onViewRelationship={() => onSwitchSheet("relationship")} />}
 
           {kind === "collaboration" && <div className="collaboration-detail">
             <div className="collaboration-switcher" aria-label="选择合作项目">
@@ -1427,6 +1506,24 @@ function ActionSheet({ kind, product, profile, onProfileSave, onClose, onSwitchS
   );
 }
 
+function PetView({ intimacyScore, notify, onViewRelationship }: { intimacyScore: number; notify: (message: string) => void; onViewRelationship: () => void }) {
+  return <div className="pet-page" data-testid="pet-view">
+    <div className="pet-page-intro"><div><span>YOUR BOND, YOUR COMPANION</span><h2>和糯米一起，把可靠的合作养成长期默契。</h2><p>宠物奖励只来自真实合作亲密度；喂养负责陪伴感，不会反向影响品牌评分。</p></div><div className="pet-page-unlocks"><span><b>3</b><small>已解锁里程碑</small></span><span><b>2</b><small>距下一奖励</small></span><span><b>+4</b><small>当前任务奖励</small></span></div></div>
+    <PetGame intimacyScore={intimacyScore} notify={notify} onViewRelationship={onViewRelationship} />
+  </div>;
+}
+
+function CatAvatar({ mini = false, scarf = false, action = "idle" }: { mini?: boolean; scarf?: boolean; action?: string }) {
+  return <div className={`pet-cat ${mini ? "mini" : ""} ${scarf ? "with-scarf" : ""} action-${action}`} aria-hidden="true">
+    <span className="cat-tail" />
+    <span className="cat-body"><i className="cat-belly" /><i className="cat-paw left" /><i className="cat-paw right" /></span>
+    <span className="cat-head"><i className="cat-ear left" /><i className="cat-ear right" /><i className="cat-stripe stripe-one" /><i className="cat-stripe stripe-two" /><b className="cat-eye left" /><b className="cat-eye right" /><em className="cat-nose" /><span className="cat-mouth" /><span className="cat-blush left" /><span className="cat-blush right" /></span>
+    {scarf && <span className="cat-scarf"><i /></span>}
+    {action === "feed" && <span className="cat-treat">★</span>}
+    {action === "play" && <span className="cat-heart">♥</span>}
+  </div>;
+}
+
 const defaultPetGameState: PetGameState = {
   adopted: false,
   name: "糯米",
@@ -1443,6 +1540,7 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
   const [game, setGame] = useState<PetGameState>(defaultPetGameState);
   const [hydrated, setHydrated] = useState(false);
   const [reaction, setReaction] = useState("在等你一起成长");
+  const [petAction, setPetAction] = useState("idle");
   const reactionTimer = useRef<number | null>(null);
   const nextMilestone = petMilestones.find((milestone) => milestone.score > intimacyScore);
   const canAdopt = intimacyScore >= petMilestones[0].score;
@@ -1451,7 +1549,16 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
     const loadSavedGame = window.setTimeout(() => {
       try {
         const saved = window.localStorage.getItem("xingban-pet-game");
-        if (saved) setGame({ ...defaultPetGameState, ...JSON.parse(saved) as PetGameState });
+        if (saved) {
+          const parsed = JSON.parse(saved) as Partial<PetGameState>;
+          if (parsed && typeof parsed === "object") {
+            setGame({
+              ...defaultPetGameState,
+              ...parsed,
+              claimedRewards: Array.isArray(parsed.claimedRewards) ? parsed.claimedRewards : [],
+            });
+          }
+        }
       } catch {
         window.localStorage.removeItem("xingban-pet-game");
       }
@@ -1471,10 +1578,14 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
     };
   }, []);
 
-  const showReaction = (message: string) => {
+  const showReaction = (message: string, action = "happy") => {
     setReaction(message);
+    setPetAction(action);
     if (reactionTimer.current !== null) window.clearTimeout(reactionTimer.current);
-    reactionTimer.current = window.setTimeout(() => setReaction("在等你一起成长"), 1800);
+    reactionTimer.current = window.setTimeout(() => {
+      setReaction("在等你一起成长");
+      setPetAction("idle");
+    }, 1800);
   };
 
   const adoptPet = () => {
@@ -1483,7 +1594,7 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
       return;
     }
     setGame((current) => ({ ...current, adopted: true, claimedRewards: current.claimedRewards.includes("adopt") ? current.claimedRewards : [...current.claimedRewards, "adopt"] }));
-    showReaction("终于见到你啦！");
+    showReaction("终于见到你啦！", "happy");
     notify("已解锁「信任感知」并领养数字宠物糯米");
   };
 
@@ -1510,7 +1621,7 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
       food: rewardId === "food" ? current.food + 3 : current.food,
       claimedRewards: [...current.claimedRewards, rewardId],
     }));
-    showReaction(rewardId === "food" ? "闻到星星饼干啦！" : "新礼物好喜欢！");
+    showReaction(rewardId === "food" ? "闻到星星饼干啦！" : "新礼物好喜欢！", "happy");
     notify(`${milestone.title} 已放入宠物小屋`);
   };
 
@@ -1526,6 +1637,11 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
       notify("宠物粮不足，继续提升亲密度可以领取");
       return;
     }
+    if (game.fullness >= 100) {
+      notify("糯米已经吃饱了，陪它玩一会再喂吧");
+      showReaction("肚子已经圆滚滚啦！", "happy");
+      return;
+    }
     setGame((current) => ({
       ...current,
       food: current.food - 1,
@@ -1533,12 +1649,17 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
       experience: current.experience + 18,
       level: Math.floor((current.experience + 18) / 100) + 1,
     }));
-    showReaction("好吃！成长经验 +18");
+    showReaction("好吃！成长经验 +18", "feed");
   };
 
   const playWithPet = () => {
+    if (game.fullness <= 10) {
+      notify("糯米有点饿，先喂一块星星饼干吧");
+      showReaction("饿得玩不动啦…", "idle");
+      return;
+    }
     addExperience(12, -5);
-    showReaction("一起玩真开心！经验 +12");
+    showReaction("一起玩真开心！经验 +12", "play");
   };
 
   const toggleOutfit = () => {
@@ -1547,7 +1668,7 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
       return;
     }
     setGame((current) => ({ ...current, equippedOutfit: current.equippedOutfit === "scarf" ? null : "scarf" }));
-    showReaction(game.equippedOutfit === "scarf" ? "换回舒服的日常造型" : "今天也要漂漂亮亮！");
+    showReaction(game.equippedOutfit === "scarf" ? "换回舒服的日常造型" : "今天也要漂漂亮亮！", "dress");
   };
 
   const toggleDecor = () => {
@@ -1556,7 +1677,7 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
       return;
     }
     setGame((current) => ({ ...current, equippedDecor: current.equippedDecor === "moon-bed" ? null : "moon-bed" }));
-    showReaction("房间变得更温暖啦！");
+    showReaction("房间变得更温暖啦！", "happy");
   };
 
   return <div className="pet-game">
@@ -1566,7 +1687,9 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
     </div>
     <div className="pet-score-track"><i style={{ width: `${intimacyScore}%` }} />{petMilestones.map((milestone) => <span key={milestone.id} className={intimacyScore >= milestone.score ? "reached" : ""} style={{ left: `${milestone.score}%` }} />)}</div>
 
-    {!game.adopted ? <div className="pet-adoption">
+    <div className="pet-game-columns">
+      <div className="pet-care-column">
+      {!game.adopted ? <div className="pet-adoption">
       <div className="pet-egg" aria-hidden="true"><span>✦</span></div>
       <span>亲密度 {petMilestones[0].score} 解锁</span>
       <h3>一位新伙伴正在等你</h3>
@@ -1576,7 +1699,7 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
       <div className={`pet-room ${game.equippedDecor === "moon-bed" ? "with-moon-bed" : ""}`}>
         <span className="pet-room-spark spark-one">✦</span><span className="pet-room-spark spark-two">·</span>
         {game.equippedDecor === "moon-bed" && <span className="pet-moon-bed" aria-hidden="true">☾</span>}
-        <div className={`pet-character ${game.equippedOutfit === "scarf" ? "with-scarf" : ""}`} aria-label={`数字宠物${game.name}`}><i className="pet-ear left" /><i className="pet-ear right" /><span className="pet-face"><i /><i /><b /></span>{game.equippedOutfit === "scarf" && <em />}</div>
+        <div className="pet-avatar-wrap" role="img" aria-label={`数字宠物小猫${game.name}`}><CatAvatar scarf={game.equippedOutfit === "scarf"} action={petAction} /></div>
         <div className="pet-reaction" aria-live="polite">{reaction}</div>
         <div className="pet-nameplate"><span>{game.name}</span><b>LV.{game.level}</b></div>
       </div>
@@ -1590,17 +1713,19 @@ function PetGame({ intimacyScore, notify, onViewRelationship }: { intimacyScore:
         <button onClick={toggleOutfit}><span>◇</span><strong>{game.equippedOutfit === "scarf" ? "卸下围巾" : "穿戴围巾"}</strong><small>{game.claimedRewards.includes("scarf") ? "已拥有" : "80 分解锁"}</small></button>
         <button onClick={toggleDecor}><span>☾</span><strong>{game.equippedDecor === "moon-bed" ? "收起小窝" : "布置小窝"}</strong><small>{game.claimedRewards.includes("moon-bed") ? "已拥有" : "90 分解锁"}</small></button>
       </div>
-    </>}
+      </>}
+      </div>
 
-    <div className="pet-milestone-section">
+      <div className="pet-growth-column"><div className="pet-milestone-section">
       <div className="pet-section-title"><div><span>GROWTH REWARDS</span><h3>亲密奖励路线</h3></div><button onClick={onViewRelationship}>查看亲密度来源 →</button></div>
       <div className="pet-milestone-list">{petMilestones.map((milestone) => {
         const unlocked = intimacyScore >= milestone.score;
         const claimed = milestone.id === "adopt" ? game.adopted : game.claimedRewards.includes(milestone.id);
         return <div key={milestone.id} className={`${unlocked ? "unlocked" : "locked"} ${claimed ? "claimed" : ""}`}><span>{unlocked ? claimed ? "✓" : "✦" : milestone.score}</span><div><i>{milestone.score} 亲密度 · {milestone.type}</i><strong>{milestone.title}</strong><small>{milestone.description}</small></div><button onClick={() => claimReward(milestone.id)} disabled={!unlocked || claimed}>{claimed ? "已领取" : unlocked ? milestone.id === "adopt" ? "领养" : "领取" : `差 ${milestone.score - intimacyScore} 分`}</button></div>;
       })}</div>
+      </div>
+      <div className="pet-intimacy-task"><span>最快获得下一份奖励</span><div><strong>完成 S12 Pro 视频上线</strong><small>按时交付并完成品牌验收，预计亲密度 +4</small></div><button onClick={() => notify("已把 S12 Pro 上线任务加入今日清单")}>加入今日任务</button></div></div>
     </div>
-    <div className="pet-intimacy-task"><span>最快获得下一份奖励</span><div><strong>完成 S12 Pro 视频上线</strong><small>按时交付并完成品牌验收，预计亲密度 +4</small></div><button onClick={() => notify("已把 S12 Pro 上线任务加入今日清单")}>加入今日任务</button></div>
   </div>;
 }
 
