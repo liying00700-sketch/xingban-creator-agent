@@ -47,11 +47,12 @@ test("server-renders the Creator Agent product shell", async () => {
 });
 
 test("ships product metadata and a bespoke social card", async () => {
-  const [page, layout, packageJson, theme, og] = await Promise.all([
+  const [page, layout, packageJson, theme, mobile, og] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../app/theme-v2.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/mobile-app.css", import.meta.url), "utf8"),
     stat(new URL("../public/og-ui-v2.png", import.meta.url)),
   ]);
 
@@ -64,6 +65,11 @@ test("ships product metadata and a bespoke social card", async () => {
   assert.match(theme, /--coral:#d63250/);
   assert.match(theme, /\.sidebar\{width:216px/);
   assert.match(theme, /@media \(max-width:640px\)/);
+  assert.match(layout, /viewportFit: "cover"/);
+  assert.match(page, /const mobileNavItems/);
+  assert.match(mobile, /grid-template-columns:repeat\(5,1fr\)/);
+  assert.match(mobile, /\.commission-row>span:nth-child\(2\):before\{content:"归因成交"\}/);
+  assert.match(mobile, /height:min\(78dvh,680px\)/);
   assert.match(packageJson, /"name": "xingban-creator-agent"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.ok(og.size > 100_000);

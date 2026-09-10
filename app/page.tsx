@@ -215,6 +215,14 @@ const navItems: { id: View; label: string; icon: string; badge?: string }[] = [
   { id: "pet", label: "亲密养成", icon: "♡" },
 ];
 
+const mobileNavItems: { id: View; label: string; icon: string }[] = [
+  { id: "today", label: "今日", icon: "⌂" },
+  { id: "opportunities", label: "机会", icon: "◇" },
+  { id: "studio", label: "创作", icon: "✦" },
+  { id: "review", label: "复盘", icon: "↗" },
+  { id: "profile", label: "我的", icon: "○" },
+];
+
 const viewTitles: Record<View, { eyebrow: string; title: string; subtitle: string }> = {
   today: { eyebrow: "MONDAY · 09:24", title: "早上好，Mia", subtitle: "今天只做最值得做的事。" },
   opportunities: { eyebrow: "OPPORTUNITY MATCH", title: "为你精选的合作", subtitle: "每个推荐都有依据，你决定是否申请。" },
@@ -439,7 +447,7 @@ export default function Home() {
       setSelectedProduct(getProductFromLocation());
       setShowApply(false);
       setActiveSheet(null);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
     };
     window.addEventListener("popstate", handlePopState);
     return () => {
@@ -477,7 +485,7 @@ export default function Home() {
       setVideoReady(false);
     }
     if (next === view) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
       return;
     }
     const nextIndex = historyIndex + 1;
@@ -496,7 +504,7 @@ export default function Home() {
     setView(next);
     setShowApply(false);
     setActiveSheet(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   };
 
   const openOpportunity = (product: Product) => {
@@ -740,10 +748,10 @@ export default function Home() {
       )}
 
       <nav className="mobile-nav" aria-label="移动端导航">
-        {navItems.filter((item) => item.id !== "pet").map((item) => (
-          <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => goTo(item.id)} aria-current={view === item.id ? "page" : undefined}>
+        {mobileNavItems.map((item) => (
+          <button key={item.id} className={`${view === item.id ? "active" : ""} ${item.id === "studio" ? "mobile-create" : ""}`} onClick={() => goTo(item.id)} aria-current={view === item.id ? "page" : undefined}>
             <AppIcon symbol={item.icon} />
-            <span>{item.label.replace("合作机会", "机会").replace("爆款创作", "创作").replace("数据复盘", "复盘").replace("佣金结算", "结算")}</span>
+            <span>{item.label}</span>
           </button>
         ))}
       </nav>
