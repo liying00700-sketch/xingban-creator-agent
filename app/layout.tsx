@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
+import "./theme-v2.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -10,7 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3001";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const imageUrl = `${protocol}://${host}/og.png`;
+  const imageUrl = `${protocol}://${host}/og-ui-v2.png`;
   const title = "星伴 Creator Agent｜你的 AI 经纪人与内容团队";
   const description = "帮助红人智能选品、连接品牌、创作爆款、生成视频并持续复盘成长。";
 
@@ -22,7 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
       description,
       type: "website",
       locale: "zh_CN",
-      images: [{ url: imageUrl, width: 1792, height: 925, alt: "星伴 Creator Agent" }],
+      images: [{ url: imageUrl, width: 1747, height: 900, alt: "星伴 Creator Agent" }],
     },
     twitter: {
       card: "summary_large_image",

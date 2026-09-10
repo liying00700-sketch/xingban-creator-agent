@@ -398,7 +398,7 @@ export default function Home() {
   const [selectedProduct, setSelectedProduct] = useState<Product>(products[0]);
   const [applicationStates, setApplicationStates] = useState<Record<string, ApplicationState>>({});
   const [showApply, setShowApply] = useState(false);
-  const [showAgent, setShowAgent] = useState(true);
+  const [showAgent, setShowAgent] = useState(false);
   const [activeSheet, setActiveSheet] = useState<SheetKind>(null);
   const [toast, setToast] = useState("");
   const [chatInput, setChatInput] = useState("");
@@ -429,6 +429,7 @@ export default function Home() {
       setSelectedProduct(initialProduct);
       setHistoryIndex(initialIndex);
       setMaxHistoryIndex(initialIndex);
+      setShowAgent(window.innerWidth > 850);
     }, 0);
 
     const handlePopState = (event: PopStateEvent) => {
@@ -638,7 +639,7 @@ export default function Home() {
   const header = viewTitles[view];
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell view-${view}`}>
       <aside className="sidebar">
         <button className="brand-lockup" onClick={() => goTo("today")} aria-label="回到今日首页">
           <span className="brand-symbol"><i /><i /><i /></span>
@@ -830,7 +831,7 @@ function TodayView({ onOpen, onGo, onOpenSheet, onOpenCollaboration, onAskCoach,
         <section className="focus-card">
           <div className="focus-copy">
             <div className="card-kicker"><Mark>01</Mark><span>今日最优先</span></div>
-            <h2>有一个很适合你的<br />Momcozy 新品合作</h2>
+            <h2>有一个很适合你的<br /><span>Momcozy 新品合作</span></h2>
             <p>受众、内容风格和合作报价都在你的舒适区。申请窗口还剩 4 天。</p>
             <div className="fit-reasons">
               <span>母婴人群匹配</span><i />
